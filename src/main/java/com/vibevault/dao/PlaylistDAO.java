@@ -135,6 +135,18 @@ public class PlaylistDAO {
         }
     }
 
+    public boolean rename(int playlistId, String name) {
+        String sql = "UPDATE playlists SET name = ? WHERE playlist_id = ?";
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, name);
+            statement.setInt(2, playlistId);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to rename playlist", e);
+        }
+    }
+
     private static Playlist mapPlaylist(ResultSet rs) throws SQLException {
         return new Playlist(
                 rs.getInt("playlist_id"),

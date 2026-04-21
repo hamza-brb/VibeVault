@@ -27,6 +27,32 @@ public class StatsService {
         return querySongStats(userId, limit, sql);
     }
 
+    public List<SongPlayStat> getTopSongsAllUsers(int limit) {
+        validateLimit(limit);
+        String sql = "SELECT s.song_id, s.title, COUNT(ph.play_id) AS play_count, COALESCE(SUM(ph.duration_listened), 0) AS total_seconds " +
+                "FROM play_history ph JOIN songs s ON s.song_id = ph.song_id " +
+                "GROUP BY s.song_id, s.title " +
+                "ORDER BY play_count DESC, total_seconds DESC, s.title ASC LIMIT ?";
+        List<SongPlayStat> stats = new ArrayList<>();
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, limit);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    stats.add(new SongPlayStat(
+                            rs.getInt("song_id"),
+                            rs.getString("title"),
+                            rs.getInt("play_count"),
+                            rs.getInt("total_seconds")
+                    ));
+                }
+            }
+            return stats;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to query global top songs", e);
+        }
+    }
+
     public List<ArtistPlayStat> getTopArtists(int userId, int limit) {
         validateLimit(limit);
         String sql = "SELECT a.artist_id, a.name, COUNT(ph.play_id) AS play_count, COALESCE(SUM(ph.duration_listened), 0) AS total_seconds " +
@@ -54,6 +80,35 @@ public class StatsService {
             return stats;
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to query top artists", e);
+        }
+    }
+
+    public List<ArtistPlayStat> getTopArtistsAllUsers(int limit) {
+        validateLimit(limit);
+        String sql = "SELECT a.artist_id, a.name, COUNT(ph.play_id) AS play_count, COALESCE(SUM(ph.duration_listened), 0) AS total_seconds " +
+                "FROM play_history ph " +
+                "JOIN songs s ON s.song_id = ph.song_id " +
+                "JOIN artists a ON a.artist_id = s.artist_id " +
+                "GROUP BY a.artist_id, a.name " +
+                "ORDER BY play_count DESC, total_seconds DESC, a.name ASC LIMIT ?";
+
+        List<ArtistPlayStat> stats = new ArrayList<>();
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, limit);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    stats.add(new ArtistPlayStat(
+                            rs.getInt("artist_id"),
+                            rs.getString("name"),
+                            rs.getInt("play_count"),
+                            rs.getInt("total_seconds")
+                    ));
+                }
+            }
+            return stats;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to query global top artists", e);
         }
     }
 
@@ -228,6 +283,36 @@ public class StatsService {
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to query total listening minutes", e);
+        }
+    }
+
+    public int getTotalPlayCount(int userId) {
+        String sql = "SELECT COUNT(*) AS total_plays FROM play_history WHERE user_id = ?";
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, userId);
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("total_plays");
+                }
+                return 0;
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to query total play count", e);
+        }
+    }
+
+    public double getTotalListeningMinutesAllUsers() {
+        String sql = "SELECT ROUND(COALESCE(SUM(duration_listened), 0) / 60.0, 1) AS total_minutes FROM play_history";
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            if (rs.next()) {
+                return rs.getDouble("total_minutes");
+            }
+            return 0.0;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to query global total listening minutes", e);
         }
     }
 

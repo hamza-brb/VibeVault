@@ -95,6 +95,7 @@ class StatsServiceTest {
         assertEquals(1, byGenre.get(1).playCount());
 
         assertEquals(4.5, statsService.getTotalListeningMinutes(user1.getUserId()));
+        assertEquals(3, statsService.getTotalPlayCount(user1.getUserId()));
     }
 
     @Test
@@ -156,7 +157,9 @@ class StatsServiceTest {
     @Test
     void shouldRejectInvalidLimit() {
         assertThrows(IllegalArgumentException.class, () -> statsService.getTopSongs(1, 0));
+        assertThrows(IllegalArgumentException.class, () -> statsService.getTopSongsAllUsers(0));
         assertThrows(IllegalArgumentException.class, () -> statsService.getTopArtists(1, -1));
+        assertThrows(IllegalArgumentException.class, () -> statsService.getTopArtistsAllUsers(-1));
         assertThrows(IllegalArgumentException.class, () -> statsService.getRecentlyPlayed(1, 0));
         assertThrows(IllegalArgumentException.class, () -> statsService.getLongestListeningSession(1, 0));
     }
@@ -166,6 +169,38 @@ class StatsServiceTest {
         User user = userDAO.create(new User(null, "empty-user", "hash", null));
         assertTrue(statsService.getFavoriteAlbum(user.getUserId()).isEmpty());
         assertTrue(statsService.getLongestListeningSession(user.getUserId()).isEmpty());
+    }
+
+    @Test
+    void shouldReturnGlobalAdminStatsAcrossAllUsers() {
+        User user1 = userDAO.create(new User(null, "admin-user-1", "hash-1", null));
+        User user2 = userDAO.create(new User(null, "admin-user-2", "hash-2", null));
+
+        Artist artist1 = artistDAO.create(new Artist(null, "Admin Artist A", null));
+        Artist artist2 = artistDAO.create(new Artist(null, "Admin Artist B", null));
+        Album album1 = albumDAO.create(new Album(null, "Admin Album A", artist1.getArtistId(), 2024, null));
+        Album album2 = albumDAO.create(new Album(null, "Admin Album B", artist2.getArtistId(), 2024, null));
+
+        Song song1 = songDAO.create(new Song(null, "Global Song 1", artist1.getArtistId(), album1.getAlbumId(), "Pop", 200, "library://admin/song1", 1, 2024));
+        Song song2 = songDAO.create(new Song(null, "Global Song 2", artist2.getArtistId(), album2.getAlbumId(), "Rock", 180, "library://admin/song2", 1, 2024));
+
+        playHistoryDAO.logPlay(user1.getUserId(), song1.getSongId(), 60);
+        playHistoryDAO.logPlay(user2.getUserId(), song1.getSongId(), 90);
+        playHistoryDAO.logPlay(user2.getUserId(), song2.getSongId(), 120);
+
+        List<StatsService.SongPlayStat> topSongs = statsService.getTopSongsAllUsers(5);
+        assertEquals(2, topSongs.size());
+        assertEquals("Global Song 1", topSongs.get(0).songTitle());
+        assertEquals(2, topSongs.get(0).playCount());
+        assertEquals(150, topSongs.get(0).totalSeconds());
+
+        List<StatsService.ArtistPlayStat> topArtists = statsService.getTopArtistsAllUsers(5);
+        assertEquals(2, topArtists.size());
+        assertEquals("Admin Artist A", topArtists.get(0).artistName());
+        assertEquals(2, topArtists.get(0).playCount());
+        assertEquals(150, topArtists.get(0).totalSeconds());
+
+        assertEquals(4.5, statsService.getTotalListeningMinutesAllUsers());
     }
 
     private void updatePlayedAt(int playId, String playedAt) {

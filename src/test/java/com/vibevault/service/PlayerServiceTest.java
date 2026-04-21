@@ -116,6 +116,19 @@ class PlayerServiceTest {
     }
 
     @Test
+    void shouldAutoLogPlaybackWhenActiveUserPausesAfterTenSeconds() {
+        PlayerService playerService = new PlayerService(databaseManager);
+        playerService.setActiveUserId(user.getUserId());
+        playerService.setQueue(songs);
+
+        playerService.play();
+        playerService.seekToSecond(11);
+        playerService.pause();
+
+        assertEquals(1, playHistoryDAO.findRecentByUser(user.getUserId(), 10).size());
+    }
+
+    @Test
     void shouldMoveAndRemoveQueueItemsWhenShuffleIsOff() {
         PlayerService playerService = new PlayerService(databaseManager);
         playerService.setQueue(songs);
@@ -173,6 +186,7 @@ class PlayerServiceTest {
         playerService.setQueue(songs);
 
         assertThrows(IllegalArgumentException.class, () -> playerService.seekToSecond(-1));
+        assertThrows(IllegalArgumentException.class, () -> playerService.seekToSecond(181));
         assertThrows(IllegalArgumentException.class, () -> playerService.setVolumePercent(-1));
         assertThrows(IllegalArgumentException.class, () -> playerService.setVolumePercent(101));
 

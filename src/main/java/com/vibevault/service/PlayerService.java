@@ -4,7 +4,18 @@ import com.vibevault.dao.PlayHistoryDAO;
 import com.vibevault.db.DatabaseManager;
 import com.vibevault.model.PlayHistory;
 import com.vibevault.model.Song;
+import javazoom.jl.decoder.JavaLayerException;
+import javazoom.jl.player.advanced.AdvancedPlayer;
+import javazoom.jl.player.advanced.PlaybackEvent;
+import javazoom.jl.player.advanced.PlaybackListener;
 
+import java.beans.PropertyChangeListener;
+import java.beans.PropertyChangeSupport;
+import java.io.BufferedInputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -13,6 +24,8 @@ import java.util.Optional;
 import java.util.Random;
 
 public class PlayerService {
+    private static final int MP3_FRAMES_PER_SECOND_ESTIMATE = 38;
+
     public enum RepeatMode {
         OFF,
         ONE,
@@ -21,6 +34,7 @@ public class PlayerService {
 
     private final PlayHistoryDAO playHistoryDAO;
     private final Random random;
+    private final PropertyChangeSupport propertyChangeSupport = new PropertyChangeSupport(this);
 
     private final List<Song> queue = new ArrayList<>();
     private final List<Integer> playOrder = new ArrayList<>();
@@ -31,6 +45,12 @@ public class PlayerService {
     private boolean playing;
     private int currentSecond;
     private int volumePercent = 70;
+    private Thread playbackThread;
+    private volatile AdvancedPlayer activePlayer;
+    private volatile boolean stopPlaybackRequested;
+    private Integer activeUserId;
+    private long playbackStartEpochMillis = -1;
+    private int playbackStartSecond;
 
     public PlayerService(DatabaseManager databaseManager) {
         this(databaseManager, new Random());
@@ -44,6 +64,8 @@ public class PlayerService {
 
     public void setQueue(List<Song> songs) {
         Objects.requireNonNull(songs, "songs must not be null");
+        finalizeCurrentSongSessionIfNeeded();
+        stopAudioPlayback();
         queue.clear();
         queue.addAll(songs);
         rebuildPlayOrder();
@@ -72,6 +94,8 @@ public class PlayerService {
     }
 
     public void clearQueue() {
+        finalizeCurrentSongSessionIfNeeded();
+        stopAudioPlayback();
         queue.clear();
         playOrder.clear();
         orderPosition = -1;
@@ -86,6 +110,9 @@ public class PlayerService {
         }
 
         int currentQueueIndex = hasCurrentSong() ? playOrder.get(orderPosition) : -1;
+        if (currentQueueIndex == queueIndex) {
+            finalizeCurrentSongSessionIfNeeded();
+        }
         queue.remove(queueIndex);
         rebuildPlayOrder();
 
@@ -150,9 +177,12 @@ public class PlayerService {
         if (targetOrderPosition < 0) {
             throw new IllegalStateException("Queue and play order are out of sync");
         }
+        finalizeCurrentSongSessionIfNeeded();
         orderPosition = targetOrderPosition;
         currentSecond = 0;
         playing = true;
+        markPlaybackSessionStart();
+        startAudioPlaybackIfPossible();
         return getCurrentSong();
     }
 
@@ -161,11 +191,15 @@ public class PlayerService {
             return Optional.empty();
         }
         playing = true;
+        markPlaybackSessionStart();
+        startAudioPlaybackIfPossible();
         return getCurrentSong();
     }
 
     public void pause() {
+        finalizeCurrentSongSessionIfNeeded();
         playing = false;
+        stopAudioPlayback();
     }
 
     public Optional<Song> resume() {
@@ -173,6 +207,8 @@ public class PlayerService {
             return Optional.empty();
         }
         playing = true;
+        markPlaybackSessionStart();
+        startAudioPlaybackIfPossible();
         return getCurrentSong();
     }
 
@@ -189,17 +225,30 @@ public class PlayerService {
         }
 
         if (orderPosition < playOrder.size() - 1) {
+            finalizeCurrentSongSessionIfNeeded();
             orderPosition++;
             currentSecond = 0;
+            markPlaybackSessionStart();
+            if (playing) {
+                startAudioPlaybackIfPossible();
+            }
             return getCurrentSong();
         }
 
         if (repeatMode == RepeatMode.ALL) {
+            finalizeCurrentSongSessionIfNeeded();
             orderPosition = 0;
             currentSecond = 0;
+            markPlaybackSessionStart();
+            if (playing) {
+                startAudioPlaybackIfPossible();
+            }
             return getCurrentSong();
         }
 
+        finalizeCurrentSongSessionIfNeeded();
+        playing = false;
+        stopAudioPlayback();
         return Optional.empty();
     }
 
@@ -212,14 +261,24 @@ public class PlayerService {
         }
 
         if (orderPosition > 0) {
+            finalizeCurrentSongSessionIfNeeded();
             orderPosition--;
             currentSecond = 0;
+            markPlaybackSessionStart();
+            if (playing) {
+                startAudioPlaybackIfPossible();
+            }
             return getCurrentSong();
         }
 
         if (repeatMode == RepeatMode.ALL && !playOrder.isEmpty()) {
+            finalizeCurrentSongSessionIfNeeded();
             orderPosition = playOrder.size() - 1;
             currentSecond = 0;
+            markPlaybackSessionStart();
+            if (playing) {
+                startAudioPlaybackIfPossible();
+            }
             return getCurrentSong();
         }
 
@@ -261,7 +320,16 @@ public class PlayerService {
         if (targetSecond < 0) {
             throw new IllegalArgumentException("targetSecond must be non-negative");
         }
+        Song currentSong = queue.get(playOrder.get(orderPosition));
+        Integer duration = currentSong.getDurationSeconds();
+        if (duration != null && targetSecond > duration) {
+            throw new IllegalArgumentException("targetSecond exceeds song duration");
+        }
         currentSecond = targetSecond;
+        if (playing) {
+            markPlaybackSessionStart();
+            startAudioPlaybackIfPossible();
+        }
     }
 
     public int getCurrentSecond() {
@@ -272,7 +340,9 @@ public class PlayerService {
         if (volumePercent < 0 || volumePercent > 100) {
             throw new IllegalArgumentException("volumePercent must be between 0 and 100");
         }
+        int previous = this.volumePercent;
         this.volumePercent = volumePercent;
+        propertyChangeSupport.firePropertyChange("volumePercent", previous, this.volumePercent);
     }
 
     public int getVolumePercent() {
@@ -286,6 +356,10 @@ public class PlayerService {
         Song currentSong = queue.get(playOrder.get(orderPosition));
         PlayHistory play = playHistoryDAO.logPlay(userId, currentSong.getSongId(), durationListenedSeconds);
         return Optional.of(play);
+    }
+
+    public void setActiveUserId(Integer userId) {
+        this.activeUserId = userId;
     }
 
     private boolean hasCurrentSong() {
@@ -319,5 +393,142 @@ public class PlayerService {
         if (shuffleEnabled) {
             Collections.shuffle(playOrder, random);
         }
+    }
+
+    public void addPropertyChangeListener(PropertyChangeListener listener) {
+        propertyChangeSupport.addPropertyChangeListener(listener);
+    }
+
+    public void removePropertyChangeListener(PropertyChangeListener listener) {
+        propertyChangeSupport.removePropertyChangeListener(listener);
+    }
+
+    private void startAudioPlaybackIfPossible() {
+        Song currentSong = getCurrentSong().orElse(null);
+        if (currentSong == null || !playing) {
+            return;
+        }
+
+        Optional<Path> candidate = resolvePlayablePath(currentSong.getFilePath());
+        if (candidate.isEmpty()) {
+            return;
+        }
+
+        stopAudioPlayback();
+        stopPlaybackRequested = false;
+        Path path = candidate.get();
+        int startSecond = currentSecond;
+        Thread thread = new Thread(() -> runPlayback(path, startSecond), "vibevault-player-thread");
+        thread.setDaemon(true);
+        playbackThread = thread;
+        thread.start();
+    }
+
+    private void runPlayback(Path path, int startSecond) {
+        AdvancedPlayer localPlayer = null;
+        try (BufferedInputStream inputStream = new BufferedInputStream(Files.newInputStream(path))) {
+            localPlayer = new AdvancedPlayer(inputStream);
+            localPlayer.setPlayBackListener(new PlaybackListener() {
+                @Override
+                public void playbackFinished(PlaybackEvent evt) {
+                    int finishedSecond = secondsFromFrame(evt.getFrame());
+                    if (finishedSecond > 0) {
+                        currentSecond = Math.max(currentSecond, finishedSecond);
+                    }
+                }
+            });
+            activePlayer = localPlayer;
+            int startFrame = frameFromSecond(startSecond);
+            if (startFrame > 0) {
+                localPlayer.play(startFrame, Integer.MAX_VALUE);
+            } else {
+                localPlayer.play();
+            }
+        } catch (IOException | JavaLayerException e) {
+            propertyChangeSupport.firePropertyChange("playbackError", null, e.getMessage());
+        } finally {
+            activePlayer = null;
+            playbackThread = null;
+            if (!stopPlaybackRequested) {
+                finalizeCurrentSongSessionIfNeeded();
+                boolean previousPlaying = playing;
+                playing = false;
+                propertyChangeSupport.firePropertyChange("playing", previousPlaying, false);
+            }
+        }
+    }
+
+    private void stopAudioPlayback() {
+        stopPlaybackRequested = true;
+        AdvancedPlayer playerToClose = activePlayer;
+        if (playerToClose != null) {
+            playerToClose.close();
+            activePlayer = null;
+        }
+    }
+
+    private void markPlaybackSessionStart() {
+        if (!playing || !hasCurrentSong()) {
+            return;
+        }
+        playbackStartEpochMillis = System.currentTimeMillis();
+        playbackStartSecond = currentSecond;
+    }
+
+    private void finalizeCurrentSongSessionIfNeeded() {
+        if (!playing || activeUserId == null || !hasCurrentSong()) {
+            resetPlaybackSessionClock();
+            return;
+        }
+        if (playbackStartEpochMillis <= 0) {
+            resetPlaybackSessionClock();
+            return;
+        }
+
+        int elapsedSeconds = (int) Math.max(0, (System.currentTimeMillis() - playbackStartEpochMillis) / 1000L);
+        int totalListened = Math.max(currentSecond, playbackStartSecond + elapsedSeconds);
+        logCurrentSongPlayback(activeUserId, totalListened);
+        currentSecond = totalListened;
+        resetPlaybackSessionClock();
+    }
+
+    private void resetPlaybackSessionClock() {
+        playbackStartEpochMillis = -1;
+        playbackStartSecond = currentSecond;
+    }
+
+    private static Optional<Path> resolvePlayablePath(String source) {
+        if (source == null || source.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            Path candidate = source.startsWith("file:")
+                    ? Path.of(java.net.URI.create(source))
+                    : Paths.get(source);
+            if (!Files.exists(candidate) || !Files.isRegularFile(candidate)) {
+                return Optional.empty();
+            }
+            String fileName = candidate.getFileName().toString().toLowerCase();
+            if (!fileName.endsWith(".mp3")) {
+                return Optional.empty();
+            }
+            return Optional.of(candidate);
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static int frameFromSecond(int second) {
+        if (second <= 0) {
+            return 0;
+        }
+        return second * MP3_FRAMES_PER_SECOND_ESTIMATE;
+    }
+
+    private static int secondsFromFrame(int frame) {
+        if (frame <= 0) {
+            return 0;
+        }
+        return frame / MP3_FRAMES_PER_SECOND_ESTIMATE;
     }
 }

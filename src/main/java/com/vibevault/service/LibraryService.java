@@ -7,7 +7,21 @@ import com.vibevault.db.DatabaseManager;
 import com.vibevault.model.Album;
 import com.vibevault.model.Artist;
 import com.vibevault.model.Song;
+import org.jaudiotagger.audio.AudioFile;
+import org.jaudiotagger.audio.AudioFileIO;
+import org.jaudiotagger.audio.AudioHeader;
+import org.jaudiotagger.audio.exceptions.CannotReadException;
+import org.jaudiotagger.audio.exceptions.InvalidAudioFrameException;
+import org.jaudiotagger.audio.exceptions.ReadOnlyFileException;
+import org.jaudiotagger.tag.FieldKey;
+import org.jaudiotagger.tag.Tag;
+import org.jaudiotagger.tag.TagException;
+import org.jaudiotagger.tag.images.Artwork;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -69,8 +83,34 @@ public class LibraryService {
         return song;
     }
 
+    public Song importSongFromFile(int userId, Path audioFilePath) {
+        Objects.requireNonNull(audioFilePath, "audioFilePath must not be null");
+        Path normalized = audioFilePath.toAbsolutePath().normalize();
+        if (!Files.exists(normalized) || !Files.isRegularFile(normalized)) {
+            throw new IllegalArgumentException("Selected audio file does not exist: " + normalized);
+        }
+
+        FileMetadata metadata = readFileMetadata(normalized);
+        Song song = importSong(userId, new SongImportRequest(
+                metadata.title(),
+                metadata.artistName(),
+                metadata.albumTitle(),
+                metadata.genre(),
+                metadata.durationSeconds(),
+                normalized.toString(),
+                metadata.trackNumber(),
+                metadata.year()
+        ));
+        persistAlbumCoverArtIfNeeded(song, metadata.coverArtBytes());
+        return song;
+    }
+
     public List<Song> getUserLibrarySongs(int userId) {
         return songDAO.findByUserLibrary(userId);
+    }
+
+    public boolean removeSongFromUserLibrary(int userId, int songId) {
+        return songDAO.removeFromUserLibrary(userId, songId);
     }
 
     public List<Album> getAlbumsByArtist(int artistId) {
@@ -183,6 +223,108 @@ public class LibraryService {
         }
     }
 
+    private FileMetadata readFileMetadata(Path audioFilePath) {
+        String fallbackTitle = stripExtension(audioFilePath.getFileName().toString());
+        String title = fallbackTitle;
+        String artistName = "Unknown Artist";
+        String albumTitle = null;
+        String genre = null;
+        Integer durationSeconds = null;
+        Integer trackNumber = null;
+        Integer year = null;
+        byte[] coverArtBytes = null;
+
+        try {
+            AudioFile audioFile = AudioFileIO.read(audioFilePath.toFile());
+            Tag tag = audioFile.getTag();
+            if (tag != null) {
+                title = firstNonBlank(tag.getFirst(FieldKey.TITLE), title);
+                artistName = firstNonBlank(tag.getFirst(FieldKey.ARTIST), artistName);
+                albumTitle = normalizeOptional(tag.getFirst(FieldKey.ALBUM));
+                genre = normalizeOptional(tag.getFirst(FieldKey.GENRE));
+                trackNumber = parseOptionalInteger(tag.getFirst(FieldKey.TRACK));
+                year = parseOptionalInteger(tag.getFirst(FieldKey.YEAR));
+                Artwork firstArtwork = tag.getFirstArtwork();
+                if (firstArtwork != null && firstArtwork.getBinaryData() != null && firstArtwork.getBinaryData().length > 0) {
+                    coverArtBytes = firstArtwork.getBinaryData();
+                }
+            }
+
+            AudioHeader audioHeader = audioFile.getAudioHeader();
+            if (audioHeader != null && audioHeader.getTrackLength() > 0) {
+                durationSeconds = audioHeader.getTrackLength();
+            }
+        } catch (CannotReadException | IOException | TagException | ReadOnlyFileException | InvalidAudioFrameException ignored) {
+            // Fallback metadata is used when tags cannot be read.
+        }
+
+        return new FileMetadata(
+                title,
+                artistName,
+                albumTitle,
+                genre,
+                durationSeconds,
+                trackNumber,
+                year,
+                coverArtBytes
+        );
+    }
+
+    private void persistAlbumCoverArtIfNeeded(Song song, byte[] coverArtBytes) {
+        if (song.getAlbumId() == null || coverArtBytes == null || coverArtBytes.length == 0) {
+            return;
+        }
+        Album album = albumDAO.findById(song.getAlbumId()).orElse(null);
+        if (album == null) {
+            return;
+        }
+        String currentCoverPath = normalizeOptional(album.getCoverArtPath());
+        if (currentCoverPath != null && Files.exists(Path.of(currentCoverPath))) {
+            return;
+        }
+
+        Path coversDirectory = Path.of("covers").toAbsolutePath().normalize();
+        Path coverPath = coversDirectory.resolve("album-" + album.getAlbumId() + ".jpg");
+        try {
+            Files.createDirectories(coversDirectory);
+            Files.write(coverPath, coverArtBytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to persist album cover art", e);
+        }
+        albumDAO.updateCoverArtPath(album.getAlbumId(), coverPath.toString());
+    }
+
+    private static String stripExtension(String fileName) {
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex <= 0) {
+            return fileName;
+        }
+        return fileName.substring(0, dotIndex);
+    }
+
+    private static String firstNonBlank(String candidate, String fallback) {
+        String normalized = normalizeOptional(candidate);
+        return normalized != null ? normalized : fallback;
+    }
+
+    private static Integer parseOptionalInteger(String value) {
+        String normalized = normalizeOptional(value);
+        if (normalized == null) {
+            return null;
+        }
+        int slashIndex = normalized.indexOf('/');
+        String firstPart = slashIndex >= 0 ? normalized.substring(0, slashIndex) : normalized;
+        String numeric = firstPart.trim();
+        if (numeric.isEmpty()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(numeric);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
     private static String normalizeRequired(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");
@@ -207,6 +349,18 @@ public class LibraryService {
             String mediaSource,
             Integer trackNumber,
             Integer year
+    ) {
+    }
+
+    private record FileMetadata(
+            String title,
+            String artistName,
+            String albumTitle,
+            String genre,
+            Integer durationSeconds,
+            Integer trackNumber,
+            Integer year,
+            byte[] coverArtBytes
     ) {
     }
 

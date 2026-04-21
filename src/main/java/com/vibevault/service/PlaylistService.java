@@ -36,6 +36,17 @@ public class PlaylistService {
         return playlistDAO.getSongs(playlistId);
     }
 
+    public boolean renamePlaylist(int playlistId, String name) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Playlist name must not be blank");
+        }
+        return playlistDAO.rename(playlistId, name.trim());
+    }
+
+    public boolean deletePlaylist(int playlistId) {
+        return playlistDAO.delete(playlistId);
+    }
+
     public void addSong(int playlistId, int songId) {
         String nextPositionSql = "SELECT COALESCE(MAX(position), 0) + 1 AS next_position FROM playlist_songs WHERE playlist_id = ?";
         String insertSql = "INSERT INTO playlist_songs(playlist_id, song_id, position) VALUES(?, ?, ?)";

@@ -51,4 +51,14 @@ class LibraryDAOTest {
         assertTrue(songDAO.removeFromUserLibrary(user.getUserId(), song.getSongId()));
         assertEquals(0, songDAO.findByUserLibrary(user.getUserId()).size());
     }
+
+    @Test
+    void shouldUpdateAlbumCoverArtPath() {
+        Artist artist = support.createArtist(artistDAO, "The Weeknd");
+        Album album = support.createAlbum(albumDAO, artist.getArtistId(), "After Hours");
+
+        assertTrue(albumDAO.updateCoverArtPath(album.getAlbumId(), "covers\\album-" + album.getAlbumId() + ".jpg"));
+        String storedPath = albumDAO.findById(album.getAlbumId()).orElseThrow().getCoverArtPath();
+        assertEquals("covers\\album-" + album.getAlbumId() + ".jpg", storedPath);
+    }
 }

@@ -119,6 +119,18 @@ public class AlbumDAO {
         }
     }
 
+    public boolean updateCoverArtPath(int albumId, String coverArtPath) {
+        String sql = "UPDATE albums SET cover_art_path = ? WHERE album_id = ?";
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, coverArtPath);
+            statement.setInt(2, albumId);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to update album cover art path", e);
+        }
+    }
+
     private static Album mapRow(ResultSet rs) throws SQLException {
         return new Album(
                 rs.getInt("album_id"),

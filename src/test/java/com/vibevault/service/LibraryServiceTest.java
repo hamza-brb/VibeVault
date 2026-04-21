@@ -10,6 +10,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -152,5 +155,20 @@ class LibraryServiceTest {
         assertEquals("Faint", albumSongs.get(1).getTitle());
 
         assertTrue(libraryService.getSongsByArtistInUserLibrary(otherUser.getUserId(), linkinParkArtistId).isEmpty());
+    }
+
+    @Test
+    void shouldImportSongFromAudioFileUsingFallbackMetadataWhenTagReadFails() throws IOException {
+        User user = userDAO.create(new User(null, "file-import-user", "hash", null));
+        Path tempFile = Files.createTempFile("vibevault-test-track", ".mp3");
+        Files.writeString(tempFile, "not-real-audio");
+        tempFile.toFile().deleteOnExit();
+
+        Song imported = libraryService.importSongFromFile(user.getUserId(), tempFile);
+
+        assertNotNull(imported.getSongId());
+        assertEquals("Unknown Artist", libraryService.getArtistBrowseSummaries(user.getUserId()).get(0).artistName());
+        assertEquals(tempFile.toAbsolutePath().normalize().toString(), imported.getFilePath());
+        assertTrue(imported.getTitle().startsWith("vibevault-test-track"));
     }
 }
