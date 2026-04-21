@@ -83,6 +83,22 @@ public class LibraryService {
         return song;
     }
 
+    public int importSongs(int userId, List<Path> audioFilePaths, java.util.function.Consumer<Integer> progressCallback) {
+        int count = 0;
+        for (int i = 0; i < audioFilePaths.size(); i++) {
+            try {
+                importSongFromFile(userId, audioFilePaths.get(i));
+                count++;
+            } catch (Exception ignored) {
+                // Skip files that fail or already exist (SongDAO uses INSERT OR IGNORE logic via service)
+            }
+            if (progressCallback != null) {
+                progressCallback.accept(i + 1);
+            }
+        }
+        return count;
+    }
+
     public Song importSongFromFile(int userId, Path audioFilePath) {
         Objects.requireNonNull(audioFilePath, "audioFilePath must not be null");
         Path normalized = audioFilePath.toAbsolutePath().normalize();

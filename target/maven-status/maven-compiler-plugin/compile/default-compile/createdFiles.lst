@@ -41,6 +41,7 @@ com\vibevault\ui\components\RoundedButton.class
 com\vibevault\service\StatsService$SongPlayStat.class
 com\vibevault\service\StatsService.class
 com\vibevault\service\LibraryService$ArtistLibrarySummary.class
+com\vibevault\ui\VibeVaultFrame$15.class
 com\vibevault\ui\VibeVaultFrame$9.class
 com\vibevault\model\Song.class
 com\vibevault\service\StatsService$RecentPlay.class
