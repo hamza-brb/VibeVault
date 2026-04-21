@@ -1,0 +1,11 @@
+com\vibevault\service\StatsServiceTest.class
+com\vibevault\dao\DaoTestSupport.class
+com\vibevault\service\LibraryServiceTest.class
+com\vibevault\service\PlayerServiceTest.class
+com\vibevault\dao\PlayHistoryDAOTest.class
+com\vibevault\dao\LibraryDAOTest.class
+com\vibevault\service\PlaylistServiceTest.class
+com\vibevault\dao\PlaylistDAOTest.class
+com\vibevault\dao\UserDAOTest.class
+com\vibevault\service\AuthServiceTest.class
+com\vibevault\service\PlaylistServiceTest$SeedData.class
