@@ -32,7 +32,7 @@ public class RoundedBorder extends AbstractBorder {
 
     @Override
     public Insets getBorderInsets(Component c) {
-        return new Insets(thickness + 5, 12, thickness + 5, 12);
+        return new Insets(thickness + 2, 10, thickness + 2, 10);
     }
 
     @Override

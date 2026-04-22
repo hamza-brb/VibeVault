@@ -595,17 +595,57 @@ public class PlayerService {
             Path candidate = source.startsWith("file:")
                     ? Path.of(java.net.URI.create(source))
                     : Paths.get(source);
-            if (!Files.exists(candidate) || !Files.isRegularFile(candidate)) {
-                return Optional.empty();
+            Path normalized = candidate.toAbsolutePath().normalize();
+            if (isPlayableMp3(normalized)) {
+                return Optional.of(normalized);
             }
-            String fileName = candidate.getFileName().toString().toLowerCase();
-            if (!fileName.endsWith(".mp3")) {
-                return Optional.empty();
+
+            String fileName = candidate.getFileName() == null ? null : candidate.getFileName().toString();
+            Optional<Path> fallback = resolveFromSharedSongsByFileName(fileName);
+            if (fallback.isPresent()) {
+                return fallback;
             }
-            return Optional.of(candidate);
+        } catch (IllegalArgumentException e) {
+            // Try a tolerant fallback using just filename extraction from raw source.
+        }
+
+        String rawFileName = extractFileName(source);
+        return resolveFromSharedSongsByFileName(rawFileName);
+    }
+
+    private static Optional<Path> resolveFromSharedSongsByFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            Path sharedCandidate = Path.of(System.getProperty("user.dir"), "songs", fileName)
+                    .toAbsolutePath()
+                    .normalize();
+            if (isPlayableMp3(sharedCandidate)) {
+                return Optional.of(sharedCandidate);
+            }
         } catch (IllegalArgumentException e) {
             return Optional.empty();
         }
+        return Optional.empty();
+    }
+
+    private static boolean isPlayableMp3(Path path) {
+        if (path == null || !Files.exists(path) || !Files.isRegularFile(path)) {
+            return false;
+        }
+        String name = path.getFileName() == null ? "" : path.getFileName().toString().toLowerCase();
+        return name.endsWith(".mp3");
+    }
+
+    private static String extractFileName(String source) {
+        if (source == null || source.isBlank()) {
+            return null;
+        }
+        int slash = source.lastIndexOf('/');
+        int backslash = source.lastIndexOf('\\');
+        int idx = Math.max(slash, backslash);
+        return idx >= 0 && idx + 1 < source.length() ? source.substring(idx + 1) : source;
     }
 
     private static int frameFromSecond(int second) {
