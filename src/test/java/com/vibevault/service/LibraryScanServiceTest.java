@@ -20,6 +20,7 @@ class LibraryScanServiceTest {
     private LibraryScanService libraryScanService;
     private User user;
     private Path watchDir;
+    private Path sharedDir;
 
     @BeforeEach
     void setUp() throws IOException {
@@ -29,7 +30,8 @@ class LibraryScanServiceTest {
         databaseManager.initializeSchema();
 
         libraryService = new LibraryService(databaseManager);
-        libraryScanService = new LibraryScanService(databaseManager, libraryService);
+        sharedDir = Files.createTempDirectory("vibevault-shared-songs");
+        libraryScanService = new LibraryScanService(databaseManager, libraryService, sharedDir);
         user = new UserDAO(databaseManager).create(new User(null, "scan-user", "hash", null));
         watchDir = Files.createTempDirectory("vibevault-scan-watch");
     }
@@ -39,6 +41,16 @@ class LibraryScanServiceTest {
         databaseManager.close();
         if (watchDir != null) {
             Files.walk(watchDir)
+                    .sorted((a, b) -> b.getNameCount() - a.getNameCount())
+                    .forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (IOException ignored) {
+                        }
+                    });
+        }
+        if (sharedDir != null) {
+            Files.walk(sharedDir)
                     .sorted((a, b) -> b.getNameCount() - a.getNameCount())
                     .forEach(path -> {
                         try {

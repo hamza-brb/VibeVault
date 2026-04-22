@@ -16,16 +16,30 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 
 public class LibraryScanService {
-    private static final Path SHARED_SONGS_DIR = Path.of("songs").toAbsolutePath().normalize();
+    private static final String SHARED_SONGS_ENV = "VIBEVAULT_SHARED_SONGS_DIR";
 
     private final LibraryService libraryService;
     private final SongDAO songDAO;
     private final WatchedFolderDAO watchedFolderDAO;
+    private final Path sharedSongsDir;
+
+    private static Path resolveSharedSongsDir() {
+        String configured = System.getenv(SHARED_SONGS_ENV);
+        if (configured != null && !configured.isBlank()) {
+            return Path.of(configured).toAbsolutePath().normalize();
+        }
+        return Path.of(System.getProperty("user.dir"), "songs").toAbsolutePath().normalize();
+    }
 
     public LibraryScanService(DatabaseManager databaseManager, LibraryService libraryService) {
+        this(databaseManager, libraryService, resolveSharedSongsDir());
+    }
+
+    LibraryScanService(DatabaseManager databaseManager, LibraryService libraryService, Path sharedSongsDir) {
         this.libraryService = libraryService;
         this.songDAO = new SongDAO(databaseManager);
         this.watchedFolderDAO = new WatchedFolderDAO(databaseManager);
+        this.sharedSongsDir = sharedSongsDir.toAbsolutePath().normalize();
     }
 
     // ── Watched Folders ───────────────────────────────────────────────────
@@ -84,7 +98,7 @@ public class LibraryScanService {
         // Step 2: Collect all MP3 paths from all watched folders
         List<String> folders = watchedFolderDAO.findByUser(userId);
         Set<Path> scanRoots = new LinkedHashSet<>();
-        scanRoots.add(SHARED_SONGS_DIR);
+        scanRoots.add(sharedSongsDir);
         for (String folder : folders) {
             scanRoots.add(Path.of(folder).toAbsolutePath().normalize());
         }
