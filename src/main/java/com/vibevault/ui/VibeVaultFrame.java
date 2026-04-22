@@ -63,9 +63,11 @@ import java.awt.event.ActionEvent;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.GridLayout;
 import java.awt.Toolkit;
 import java.io.File;
@@ -85,6 +87,7 @@ import java.util.stream.Collectors;
 import javax.swing.SwingWorker;
 
 public class VibeVaultFrame extends JFrame {
+    private static final int NOW_PLAYING_TITLE_MAX_WIDTH = 180;
     private static final Color ABYSS = Theme.BG_DEEP;
     private static final Color DEEP_NAVY = Theme.BG_SURFACE;
     private static final Color STEEL_BLUE = Theme.BG_BORDER;
@@ -114,6 +117,7 @@ public class VibeVaultFrame extends JFrame {
     private final JPanel contentCardPanel = new JPanel(contentCardLayout);
     private final CardLayout browseCardLayout = new CardLayout();
     private final JPanel browseCardPanel = new JPanel(browseCardLayout);
+    private JPanel nowPlayingBar;
 
     private final JTextField usernameField = new JTextField();
     private final JPasswordField passwordField = new JPasswordField();
@@ -249,7 +253,7 @@ public class VibeVaultFrame extends JFrame {
     private final JTable searchArtistsTable = new JTable(searchArtistsTableModel);
     private final JTable searchPlaylistsTable = new JTable(searchPlaylistsTableModel);
     private final JLabel searchResultsLabel = new JLabel("Search results");
-    private final JPanel browseGridPanel = new JPanel(new GridLayout(0, 5, 10, 10));
+    private final JPanel browseGridPanel = new JPanel(new GridLayout(0, 4, 14, 14));
     private final JLabel browseHeaderLabel = new JLabel("Artists");
     private final JLabel browseDetailLabel = new JLabel("Detail");
     private final DefaultTableModel browseSongsTableModel = new DefaultTableModel(
@@ -373,13 +377,16 @@ public class VibeVaultFrame extends JFrame {
         playButton.setFont(symbolFont.deriveFont(17f));
         playButton.setPreferredSize(new Dimension(44, 36));
         playButton.setBackground(Theme.ACCENT_SOFT);
-        seekSlider.setPreferredSize(new Dimension(520, 24));
+        seekSlider.setPreferredSize(new Dimension(760, 24));
+        seekSlider.setMinimumSize(new Dimension(420, 24));
+        seekSlider.setMaximumSize(new Dimension(620, 24));
         seekSlider.setOpaque(true);
         seekSlider.setBackground(Theme.BG_SURFACE);
         seekSlider.setForeground(Theme.ACCENT);
         seekSlider.setUI(new AccentSliderUI(seekSlider, Theme.ACCENT, Theme.BG_BORDER));
-        volumeSlider.setPreferredSize(new Dimension(82, 18));
-        volumeSlider.setMaximumSize(new Dimension(92, 18));
+        volumeSlider.setPreferredSize(new Dimension(68, 16));
+        volumeSlider.setMinimumSize(new Dimension(56, 16));
+        volumeSlider.setMaximumSize(new Dimension(72, 16));
         volumeSlider.setOpaque(true);
         volumeSlider.setBackground(Theme.BG_SURFACE);
         volumeSlider.setForeground(Theme.ACCENT);
@@ -525,7 +532,9 @@ public class VibeVaultFrame extends JFrame {
         contentCardPanel.add(buildStatsScreenPanel(), CONTENT_STATS);
         contentCardPanel.add(buildSearchResultsPanel(), CONTENT_SEARCH);
         shell.add(contentCardPanel, BorderLayout.CENTER);
-        shell.add(buildNowPlayingBar(), BorderLayout.SOUTH);
+        nowPlayingBar = buildNowPlayingBar();
+        nowPlayingBar.setVisible(false);
+        shell.add(nowPlayingBar, BorderLayout.SOUTH);
         return shell;
     }
 
@@ -650,7 +659,7 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private JPanel buildNowPlayingBar() {
-        JPanel bar = new JPanel(new GridLayout(1, 3, 0, 0));
+        JPanel bar = new JPanel(new BorderLayout(16, 0));
         bar.setBackground(Theme.BG_SURFACE);
         bar.setPreferredSize(new Dimension(0, 104));
         bar.setBorder(BorderFactory.createCompoundBorder(
@@ -673,6 +682,7 @@ public class VibeVaultFrame extends JFrame {
         songMetaPanel.add(nowPlayingArtistLabel);
         leftPanel.add(nowPlayingAvatar);
         leftPanel.add(songMetaPanel);
+        leftPanel.setPreferredSize(new Dimension(290, 0));
 
         JPanel centerPanel = new JPanel();
         centerPanel.setOpaque(false);
@@ -681,6 +691,9 @@ public class VibeVaultFrame extends JFrame {
 
         JPanel seekRow = new JPanel(new BorderLayout(8, 0));
         seekRow.setOpaque(false);
+        seekRow.setPreferredSize(new Dimension(620, 24));
+        seekRow.setMaximumSize(new Dimension(620, 24));
+        seekRow.setAlignmentX(Component.CENTER_ALIGNMENT);
         elapsedTimeLabel.setForeground(Theme.TEXT_MUTED);
         elapsedTimeLabel.setFont(Theme.body(11f));
         totalTimeLabel.setForeground(Theme.TEXT_MUTED);
@@ -691,6 +704,7 @@ public class VibeVaultFrame extends JFrame {
 
         JPanel centerControls = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 2));
         centerControls.setOpaque(false);
+        centerControls.setAlignmentX(Component.CENTER_ALIGNMENT);
         RoundedButton previousButton = createIconButton("⏮");
         RoundedButton nextButton = createIconButton("⏭");
         previousButton.setPreferredSize(new Dimension(40, 34));
@@ -733,21 +747,23 @@ public class VibeVaultFrame extends JFrame {
         seekSlider.addChangeListener(seekListener);
 
         volumeSlider.addChangeListener(e -> playerService.setVolumePercent(volumeSlider.getValue()));
-        JPanel rightControls = new JPanel(new BorderLayout(8, 4));
+        JPanel rightControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         rightControls.setOpaque(false);
+        rightControls.setPreferredSize(new Dimension(150, 0));
 
         JPanel volumePanel = new JPanel(new BorderLayout(4, 0));
         volumePanel.setOpaque(false);
+        volumePanel.setPreferredSize(new Dimension(132, 24));
         JLabel volumeLabel = new JLabel("Volume");
         volumeLabel.setForeground(Theme.TEXT_MUTED);
         volumeLabel.setFont(Theme.body(12f));
         volumePanel.add(volumeLabel, BorderLayout.WEST);
         volumePanel.add(volumeSlider, BorderLayout.CENTER);
-        rightControls.add(volumePanel, BorderLayout.CENTER);
+        rightControls.add(volumePanel);
 
-        bar.add(leftPanel);
-        bar.add(centerPanel);
-        bar.add(rightControls);
+        bar.add(leftPanel, BorderLayout.WEST);
+        bar.add(centerPanel, BorderLayout.CENTER);
+        bar.add(rightControls, BorderLayout.EAST);
         return bar;
     }
 
@@ -789,11 +805,22 @@ public class VibeVaultFrame extends JFrame {
         browseGridPanel.removeAll();
         User user = requireCurrentUser();
         List<LibraryService.ArtistLibrarySummary> artists = libraryService.getArtistBrowseSummaries(user.getUserId());
+        if (artists.isEmpty()) {
+            JLabel empty = new JLabel("No artists yet. Import songs to build your artist view.");
+            empty.setForeground(Theme.TEXT_MUTED);
+            empty.setFont(Theme.body(13f));
+            browseGridPanel.setLayout(new GridLayout(1, 1));
+            browseGridPanel.add(empty);
+            browseGridPanel.revalidate();
+            browseGridPanel.repaint();
+            return;
+        }
+        browseGridPanel.setLayout(new GridLayout(0, 4, 14, 14));
         for (LibraryService.ArtistLibrarySummary artist : artists) {
             RoundedButton card = BrowseScreenView.createArtistCard(
                     artist.artistName(),
                     artist.songCount(),
-                    text -> new RoundedButton(text, 15, DEEP_NAVY, STEEL_BLUE, ABYSS)
+                    text -> new RoundedButton(text, 18, Theme.BG_ELEVATED, Theme.BG_HOVER, Theme.ACCENT_SOFT)
             );
             card.addActionListener(e -> openArtistBrowseDetail(artist.artistId(), artist.artistName()));
             browseGridPanel.add(card);
@@ -1114,6 +1141,9 @@ public class VibeVaultFrame extends JFrame {
         totalTimeLabel.setText("0:00");
         librarySongCountLabel.setText("0 songs");
         playerService.clearQueue();
+        if (nowPlayingBar != null) {
+            nowPlayingBar.setVisible(false);
+        }
         setActiveSection(CONTENT_LIBRARY);
         cardLayout.show(rootPanel, CARD_AUTH);
     }
@@ -1720,18 +1750,50 @@ public class VibeVaultFrame extends JFrame {
 
     private void updateNowPlayingLabel() {
         ensureArtistCacheLoaded();
-        playerService.getCurrentSong().ifPresentOrElse(song -> {
+        Song currentSong = playerService.getCurrentSong().orElse(null);
+        if (nowPlayingBar != null) {
+            nowPlayingBar.setVisible(currentSong != null);
+        }
+        if (currentSong != null) {
+            Song song = currentSong;
             String artistName = lookupArtistName(song.getArtistId());
-            nowPlayingLabel.setText(formatSongTitleForDisplay(song));
+            String displayTitle = formatSongTitleForDisplay(song);
+            nowPlayingLabel.setText(ellipsizeForLabel(nowPlayingLabel, displayTitle, NOW_PLAYING_TITLE_MAX_WIDTH));
+            nowPlayingLabel.setToolTipText(displayTitle);
             nowPlayingArtistLabel.setText(artistName);
             nowPlayingAvatar.setSeedText(artistName.isBlank() ? song.getTitle() : artistName);
             playButton.setText(playerService.isPlaying() ? "⏸" : "▶");
-        }, () -> {
+        } else {
             nowPlayingLabel.setText("Nothing playing");
+            nowPlayingLabel.setToolTipText(null);
             nowPlayingArtistLabel.setText("Choose a song from your library");
             nowPlayingAvatar.setSeedText("VibeVault");
             playButton.setText("▶");
-        });
+        }
+    }
+
+    private String ellipsizeForLabel(JLabel label, String text, int maxWidth) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        FontMetrics metrics = label.getFontMetrics(label.getFont());
+        if (metrics.stringWidth(text) <= maxWidth) {
+            return text;
+        }
+        String ellipsis = "...";
+        int ellipsisWidth = metrics.stringWidth(ellipsis);
+        if (ellipsisWidth >= maxWidth) {
+            return ellipsis;
+        }
+        int end = text.length();
+        while (end > 0) {
+            String candidate = text.substring(0, end) + ellipsis;
+            if (metrics.stringWidth(candidate) <= maxWidth) {
+                return candidate;
+            }
+            end--;
+        }
+        return ellipsis;
     }
 
     private Integer getSelectedPlaylistId() {

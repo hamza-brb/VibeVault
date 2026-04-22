@@ -33,14 +33,14 @@ public final class BrowseScreenView {
             Consumer<JScrollPane> styleScrollPane,
             Runnable onPlayCurrentBrowseSongs
     ) {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBackground(Theme.BG_SURFACE);
-        panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        JPanel panel = new JPanel(new BorderLayout(12, 12));
+        panel.setBackground(Theme.BG_DEEP);
+        panel.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
 
         JPanel header = new JPanel(new BorderLayout(10, 0));
         header.setOpaque(false);
         browseHeaderLabel.setForeground(Theme.TEXT_PRIMARY);
-        browseHeaderLabel.setFont(Theme.heading(20f));
+        browseHeaderLabel.setFont(Theme.heading(22f));
         JPanel togglePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         togglePanel.setOpaque(false);
         JLabel browseHint = new JLabel("Artists in your library");
@@ -50,13 +50,14 @@ public final class BrowseScreenView {
         header.add(browseHeaderLabel, BorderLayout.WEST);
         header.add(togglePanel, BorderLayout.EAST);
 
-        browseGridPanel.setBackground(Theme.BG_SURFACE);
+        browseGridPanel.setBackground(Theme.BG_DEEP);
         JScrollPane gridScroll = new JScrollPane(browseGridPanel);
         styleScrollPane.accept(gridScroll);
+        gridScroll.setBorder(BorderFactory.createLineBorder(Theme.BG_BORDER, 1, true));
         browseCardPanel.add(gridScroll, browseGridCard);
 
         JPanel detail = new JPanel(new BorderLayout(8, 8));
-        detail.setBackground(Theme.BG_SURFACE);
+        detail.setBackground(Theme.BG_DEEP);
         RoundedButton backButton = createSecondaryButton.apply("← Back");
         backButton.addActionListener(e -> browseCardLayout.show(browseCardPanel, browseGridCard));
         RoundedButton playAllButton = createPrimaryButton.apply("▶ Play All");
@@ -86,14 +87,38 @@ public final class BrowseScreenView {
             int songCount,
             Function<String, RoundedButton> createCardButton
     ) {
+        int safeSongCount = Math.max(0, songCount);
+        String tracksText = safeSongCount == 1 ? "1 track" : safeSongCount + " tracks";
         RoundedButton card = createCardButton.apply(
-                "<html><div style='text-align:center;'><b><font size='3'>" + escapeHtml(artistName) +
-                        "</font></b><br/><span style='font-size:10px;'>" + songCount + " songs</span></div></html>"
+                "<html><div style='text-align:left;padding:10px 8px 8px 10px;'>"
+                        + "<div style='font-size:17px;color:#1ED760;'>♫ " + initials(artistName) + "</div>"
+                        + "<div style='font-size:13px;font-weight:700;color:#F5F5F5;'>"
+                        + escapeHtml(artistName)
+                        + "</div>"
+                        + "<div style='font-size:10px;color:#B3B3B3;margin-top:2px;'>"
+                        + tracksText
+                        + "</div></div></html>"
         );
         card.setForeground(Theme.TEXT_PRIMARY);
-        card.setFont(Theme.body(11f));
-        card.setPreferredSize(new Dimension(100, 100));
+        card.setFont(Theme.body(12f));
+        card.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Theme.BG_BORDER, 1, true),
+                BorderFactory.createEmptyBorder(2, 2, 2, 2)
+        ));
+        card.setPreferredSize(new Dimension(180, 118));
         return card;
+    }
+
+    private static String initials(String text) {
+        if (text == null || text.isBlank()) {
+            return "AR";
+        }
+        String[] parts = text.trim().split("\\s+");
+        if (parts.length == 1) {
+            return parts[0].substring(0, Math.min(2, parts[0].length())).toUpperCase();
+        }
+        return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
     }
 
     private static String escapeHtml(String text) {

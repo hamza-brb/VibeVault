@@ -97,9 +97,11 @@ public final class PlaylistsScreenView {
 
         JPanel rowActions = new JPanel();
         rowActions.setOpaque(false);
-        RoundedButton moveUpButton = createSecondaryButton.apply("Move Up");
-        RoundedButton moveDownButton = createSecondaryButton.apply("Move Down");
+        RoundedButton moveUpButton = createSecondaryButton.apply("↑");
+        RoundedButton moveDownButton = createSecondaryButton.apply("↓");
         RoundedButton removeButton = createSecondaryButton.apply("Remove from Playlist");
+        applySymbolButtonFont.accept(moveUpButton);
+        applySymbolButtonFont.accept(moveDownButton);
         moveUpButton.addActionListener(e -> onMoveSongUp.run());
         moveDownButton.addActionListener(e -> onMoveSongDown.run());
         removeButton.addActionListener(e -> onRemoveSong.run());
