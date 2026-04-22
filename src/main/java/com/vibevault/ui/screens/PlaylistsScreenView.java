@@ -1,6 +1,7 @@
 package com.vibevault.ui.screens;
 
 import com.vibevault.ui.components.RoundedButton;
+import com.vibevault.ui.components.RoundedPanel;
 import com.vibevault.ui.components.Theme;
 
 import javax.swing.BorderFactory;
@@ -37,20 +38,22 @@ public final class PlaylistsScreenView {
             Runnable onRemoveSong,
             Runnable onRefreshPlaylistScreenDetail
     ) {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBackground(Theme.BG_SURFACE);
-        panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        JPanel panel = new JPanel(new BorderLayout(14, 14));
+        panel.setBackground(Theme.BG_DEEP);
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
 
         JScrollPane leftListScroll = new JScrollPane(playlistScreenListTable);
         styleScrollPane.accept(leftListScroll);
 
-        JPanel leftPanel = new JPanel(new BorderLayout(0, 8));
-        leftPanel.setOpaque(false);
+        RoundedPanel leftPanel = new RoundedPanel(22, Theme.BG_SURFACE);
+        leftPanel.setBorderConfig(Theme.BG_BORDER, 1);
+        leftPanel.setLayout(new BorderLayout(0, 10));
+        leftPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
         JPanel leftHeader = new JPanel(new BorderLayout(8, 0));
         leftHeader.setOpaque(false);
         JLabel playlistsLabel = new JLabel("Playlists");
         playlistsLabel.setForeground(Theme.TEXT_PRIMARY);
-        playlistsLabel.setFont(Theme.heading(16f));
+        playlistsLabel.setFont(Theme.heading(18f));
         RoundedButton createButton = createPrimaryButton.apply("+ New");
         applySymbolButtonFont.accept(createButton);
         createButton.setPreferredSize(new Dimension(80, 32));
@@ -61,16 +64,19 @@ public final class PlaylistsScreenView {
         leftPanel.add(leftListScroll, BorderLayout.CENTER);
         leftPanel.setPreferredSize(new Dimension(260, 0));
 
-        JPanel right = new JPanel(new BorderLayout(8, 8));
-        right.setOpaque(false);
+        RoundedPanel right = new RoundedPanel(22, Theme.BG_SURFACE);
+        right.setBorderConfig(Theme.BG_BORDER, 1);
+        right.setLayout(new BorderLayout(10, 10));
+        right.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
         JPanel header = new JPanel(new BorderLayout(8, 8));
         header.setOpaque(false);
         playlistScreenTitleLabel.setForeground(Theme.TEXT_PRIMARY);
-        playlistScreenTitleLabel.setFont(Theme.heading(18f));
+        playlistScreenTitleLabel.setFont(Theme.heading(20f));
         playlistScreenMetaLabel.setForeground(new java.awt.Color(0xA2A89A));
+        playlistScreenMetaLabel.setFont(Theme.body(12f));
 
-        JPanel actions = new JPanel();
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         actions.setOpaque(false);
         RoundedButton playButton = createPrimaryButton.apply("▶ Play");
         RoundedButton addSongButton = createSecondaryButton.apply("+ Add Songs");
@@ -95,7 +101,7 @@ public final class PlaylistsScreenView {
         JScrollPane songsScroll = new JScrollPane(playlistScreenSongsTable);
         styleScrollPane.accept(songsScroll);
 
-        JPanel rowActions = new JPanel();
+        JPanel rowActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         rowActions.setOpaque(false);
         RoundedButton moveUpButton = createSecondaryButton.apply("↑");
         RoundedButton moveDownButton = createSecondaryButton.apply("↓");

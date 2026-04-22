@@ -16,7 +16,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -124,11 +126,14 @@ class StatsServiceTest {
         assertTrue(longestSession.sessionEnd().startsWith(oneDayAgo + " 10:20:00"));
 
         List<StatsService.DailyListeningStat> weekly = statsService.getWeeklyActivity(user.getUserId());
-        assertEquals(2, weekly.size());
-        assertEquals(sixDaysAgo, weekly.get(0).day());
-        assertEquals(90, weekly.get(0).totalSeconds());
-        assertEquals(oneDayAgo, weekly.get(1).day());
-        assertEquals(360, weekly.get(1).totalSeconds());
+        assertEquals(7, weekly.size());
+        assertEquals(LocalDate.now().minusDays(6).toString(), weekly.get(0).day());
+        assertEquals(LocalDate.now().toString(), weekly.get(6).day());
+
+        Map<String, Integer> weeklySecondsByDay = weekly.stream()
+                .collect(Collectors.toMap(StatsService.DailyListeningStat::day, StatsService.DailyListeningStat::totalSeconds));
+        assertEquals(90, weeklySecondsByDay.get(sixDaysAgo));
+        assertEquals(360, weeklySecondsByDay.get(oneDayAgo));
     }
 
     @Test

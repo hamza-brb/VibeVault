@@ -192,10 +192,16 @@ public class StatsService {
     }
 
     public List<DailyListeningStat> getWeeklyActivity(int userId) {
-        String sql = "SELECT DATE(played_at) AS day, COALESCE(SUM(duration_listened), 0) AS total_seconds " +
-                "FROM play_history " +
-                "WHERE user_id = ? AND DATE(played_at) >= DATE('now', '-6 day') " +
-                "GROUP BY DATE(played_at) ORDER BY day ASC";
+        String sql = "WITH RECURSIVE week_days(day) AS (" +
+                "  SELECT DATE('now', 'localtime', '-6 day') " +
+                "  UNION ALL " +
+                "  SELECT DATE(day, '+1 day') FROM week_days WHERE day < DATE('now', 'localtime')" +
+                ") " +
+                "SELECT week_days.day AS day, COALESCE(SUM(ph.duration_listened), 0) AS total_seconds " +
+                "FROM week_days " +
+                "LEFT JOIN play_history ph ON ph.user_id = ? AND DATE(ph.played_at, 'localtime') = week_days.day " +
+                "GROUP BY week_days.day " +
+                "ORDER BY week_days.day ASC";
 
         List<DailyListeningStat> stats = new ArrayList<>();
         try (Connection connection = databaseManager.getConnection();

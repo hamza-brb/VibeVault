@@ -2,6 +2,7 @@ package com.vibevault.ui.screens;
 
 import com.vibevault.ui.components.Theme;
 import com.vibevault.ui.components.WeeklyBarChart;
+import com.vibevault.ui.components.RoundedPanel;
 
 import javax.swing.BorderFactory;
 import javax.swing.JComboBox;
@@ -9,6 +10,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.SwingUtilities;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -17,6 +19,10 @@ import java.awt.GridLayout;
 import java.util.function.Consumer;
 
 public final class StatsScreenView {
+    private static final int STATS_SCROLL_UNIT_INCREMENT = 32;
+    private static final int STATS_SCROLL_BLOCK_INCREMENT = 120;
+    private static final double STATS_SCROLL_SPEED_MULTIPLIER = 1.8;
+
     private StatsScreenView() {
     }
 
@@ -31,15 +37,15 @@ public final class StatsScreenView {
             Consumer<JScrollPane> styleScrollPane,
             Consumer<JTable> styleTable
     ) {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBackground(Theme.BG_SURFACE);
-        panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        JPanel panel = new JPanel(new BorderLayout(14, 14));
+        panel.setBackground(Theme.BG_DEEP);
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
 
         JPanel topHeader = new JPanel(new BorderLayout(8, 0));
         topHeader.setOpaque(false);
         JLabel title = new JLabel("Your Stats");
         title.setForeground(Theme.TEXT_PRIMARY);
-        title.setFont(Theme.heading(20f));
+        title.setFont(Theme.heading(22f));
         JComboBox<String> filter = new JComboBox<>(new String[]{"This Week", "This Month", "All Time"});
         topHeader.add(title, BorderLayout.WEST);
         topHeader.add(filter, BorderLayout.EAST);
@@ -51,19 +57,33 @@ public final class StatsScreenView {
         cards.add(buildStatCard("Listening Time", statsListeningValueLabel));
         cards.add(buildStatCard("Top Artist", statsTopArtistValueLabel));
 
-        JPanel lists = new JPanel(new GridLayout(1, 2, 10, 10));
+        JPanel lists = new JPanel(new GridLayout(1, 2, 12, 12));
         lists.setOpaque(false);
 
         JTable topSongsStatsTable = new JTable(topSongsTableModel);
         JTable topArtistsStatsTable = new JTable(topArtistsTableModel);
+        styleTable.accept(topSongsStatsTable);
+        styleTable.accept(topArtistsStatsTable);
         topSongsStatsTable.getTableHeader().setReorderingAllowed(false);
         topArtistsStatsTable.getTableHeader().setReorderingAllowed(false);
         JScrollPane topSongsScroll = new JScrollPane(topSongsStatsTable);
         JScrollPane topArtistsScroll = new JScrollPane(topArtistsStatsTable);
+        int topTableHeight = topSongsStatsTable.getRowHeight() * 5
+                + topSongsStatsTable.getTableHeader().getPreferredSize().height + 2;
+        topSongsScroll.setPreferredSize(new Dimension(0, topTableHeight));
+        topArtistsScroll.setPreferredSize(new Dimension(0, topTableHeight));
+        topSongsScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        topArtistsScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         styleScrollPane.accept(topSongsScroll);
         styleScrollPane.accept(topArtistsScroll);
-        topSongsScroll.setBorder(BorderFactory.createTitledBorder("Top 5 Songs"));
-        topArtistsScroll.setBorder(BorderFactory.createTitledBorder("Top 5 Artists"));
+        topSongsScroll.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(Theme.BG_BORDER, 1, true),
+                "Top 5 Songs"
+        ));
+        topArtistsScroll.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(Theme.BG_BORDER, 1, true),
+                "Top 5 Artists"
+        ));
         topSongsStatsTable.getColumnModel().getColumn(0).setPreferredWidth(200);
         topSongsStatsTable.getColumnModel().getColumn(1).setPreferredWidth(50);
         topSongsStatsTable.getColumnModel().getColumn(2).setPreferredWidth(70);
@@ -73,17 +93,23 @@ public final class StatsScreenView {
 
         lists.add(topSongsScroll);
         lists.add(topArtistsScroll);
+        lists.setPreferredSize(new Dimension(0, topTableHeight + 36));
 
-        JPanel weeklySection = new JPanel(new BorderLayout());
-        weeklySection.setOpaque(false);
+        RoundedPanel weeklySection = new RoundedPanel(18, Theme.BG_SURFACE);
+        weeklySection.setBorderConfig(Theme.BG_BORDER, 1);
+        weeklySection.setLayout(new BorderLayout());
+        weeklySection.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         JLabel weeklyTitle = new JLabel("Weekly Activity");
         weeklyTitle.setForeground(Theme.TEXT_PRIMARY);
+        weeklyTitle.setFont(Theme.body(13f).deriveFont(java.awt.Font.BOLD));
         weeklySection.add(weeklyTitle, BorderLayout.NORTH);
         weeklyBarChart.setPreferredSize(new Dimension(0, 160));
         weeklySection.add(weeklyBarChart, BorderLayout.CENTER);
 
-        JPanel recentSection = new JPanel(new BorderLayout());
-        recentSection.setOpaque(false);
+        RoundedPanel recentSection = new RoundedPanel(18, Theme.BG_SURFACE);
+        recentSection.setBorderConfig(Theme.BG_BORDER, 1);
+        recentSection.setLayout(new BorderLayout());
+        recentSection.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         JLabel recentTitle = new JLabel("Recently Played");
         recentTitle.setForeground(Theme.TEXT_PRIMARY);
         recentTitle.setFont(Theme.heading(14f));
@@ -92,27 +118,68 @@ public final class StatsScreenView {
         styleTable.accept(recentStatsTable);
         JScrollPane recentScroll = new JScrollPane(recentStatsTable);
         recentScroll.setPreferredSize(new Dimension(0, 140));
+        recentScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         styleScrollPane.accept(recentScroll);
         recentSection.add(recentScroll, BorderLayout.CENTER);
 
-        JPanel lowerSection = new JPanel(new GridLayout(2, 1, 0, 10));
+        JPanel lowerSection = new JPanel(new GridLayout(2, 1, 0, 12));
         lowerSection.setOpaque(false);
         lowerSection.add(weeklySection);
         lowerSection.add(recentSection);
 
-        JPanel center = new JPanel(new BorderLayout(10, 10));
+        RoundedPanel center = new RoundedPanel(22, Theme.BG_SURFACE);
+        center.setBorderConfig(Theme.BG_BORDER, 1);
+        center.setLayout(new BorderLayout(12, 12));
+        center.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
         center.setOpaque(false);
         center.add(cards, BorderLayout.NORTH);
-        center.add(lists, BorderLayout.CENTER);
+        JPanel listsHost = new JPanel(new BorderLayout());
+        listsHost.setOpaque(false);
+        listsHost.add(lists, BorderLayout.NORTH);
+        center.add(listsHost, BorderLayout.CENTER);
         center.add(lowerSection, BorderLayout.SOUTH);
 
         JScrollPane mainScroll = new JScrollPane(center);
+        mainScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        mainScroll.setWheelScrollingEnabled(true);
+        mainScroll.getVerticalScrollBar().setUnitIncrement(STATS_SCROLL_UNIT_INCREMENT);
+        mainScroll.getVerticalScrollBar().setBlockIncrement(STATS_SCROLL_BLOCK_INCREMENT);
         styleScrollPane.accept(mainScroll);
         mainScroll.setBorder(null);
+        topSongsScroll.setWheelScrollingEnabled(false);
+        topArtistsScroll.setWheelScrollingEnabled(false);
+        recentScroll.setWheelScrollingEnabled(false);
+        forwardMouseWheelTo(mainScroll, topSongsStatsTable);
+        forwardMouseWheelTo(mainScroll, topArtistsStatsTable);
+        forwardMouseWheelTo(mainScroll, topSongsScroll.getViewport());
+        forwardMouseWheelTo(mainScroll, topArtistsScroll.getViewport());
+        forwardMouseWheelTo(mainScroll, topSongsScroll);
+        forwardMouseWheelTo(mainScroll, topArtistsScroll);
+        forwardMouseWheelTo(mainScroll, recentStatsTable);
+        forwardMouseWheelTo(mainScroll, recentScroll.getViewport());
+        forwardMouseWheelTo(mainScroll, weeklyBarChart);
 
         panel.add(topHeader, BorderLayout.NORTH);
         panel.add(mainScroll, BorderLayout.CENTER);
         return panel;
+    }
+
+    private static void forwardMouseWheelTo(JScrollPane target, java.awt.Component source) {
+        source.addMouseWheelListener(e -> {
+            javax.swing.JScrollBar verticalBar = target.getVerticalScrollBar();
+            if (verticalBar == null || !verticalBar.isVisible()) {
+                return;
+            }
+            int direction = e.getPreciseWheelRotation() >= 0 ? 1 : -1;
+            int unitIncrement = Math.max(1, verticalBar.getUnitIncrement(direction));
+            double units = Math.abs(e.getPreciseWheelRotation()) * Math.max(1, e.getScrollAmount());
+            int delta = (int) Math.round(units * unitIncrement * STATS_SCROLL_SPEED_MULTIPLIER) * direction;
+            int min = verticalBar.getMinimum();
+            int max = verticalBar.getMaximum() - verticalBar.getVisibleAmount();
+            int next = Math.max(min, Math.min(max, verticalBar.getValue() + delta));
+            verticalBar.setValue(next);
+            e.consume();
+        });
     }
 
     private static JPanel buildStatCard(String labelText, JLabel valueLabel) {
