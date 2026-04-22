@@ -105,6 +105,10 @@ public class LibraryService {
         if (!Files.exists(normalized) || !Files.isRegularFile(normalized)) {
             throw new IllegalArgumentException("Selected audio file does not exist: " + normalized);
         }
+        String fileName = normalized.getFileName().toString().toLowerCase();
+        if (!fileName.endsWith(".mp3")) {
+            throw new IllegalArgumentException("Only MP3 files are supported for playback");
+        }
 
         FileMetadata metadata = readFileMetadata(normalized);
         Song song = importSong(userId, new SongImportRequest(

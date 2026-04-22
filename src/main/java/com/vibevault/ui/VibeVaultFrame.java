@@ -18,22 +18,24 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
-import javax.swing.JFileChooser;
+import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.JProgressBar;
 import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
+import javax.swing.DefaultListModel;
 import javax.swing.RowFilter;
 import javax.swing.SwingUtilities;
-import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
@@ -42,6 +44,7 @@ import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FileDialog;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
@@ -53,11 +56,7 @@ import java.awt.event.FocusEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
-
-import javax.swing.ProgressMonitor;
 import javax.swing.SwingWorker;
-import java.util.Arrays;
-import java.util.stream.Collectors;
 
 public class VibeVaultFrame extends JFrame {
     private static final Color ABYSS = new Color(0x0D1321);
@@ -922,37 +921,18 @@ public class VibeVaultFrame extends JFrame {
         JLabel songsTitle = new JLabel("Songs");
         songsTitle.setForeground(CREAM);
         songsTitle.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        RoundedButton addSongsButton = createPrimaryButton("Add Songs");
+        addSongsButton.setPreferredSize(new Dimension(130, 34));
+        addSongsButton.addActionListener(e -> showAddSongsDialog());
         styleInputField(librarySearchField);
         applyPlaceholder(librarySearchField, "Search your library...");
         librarySearchField.setPreferredSize(new Dimension(260, 34));
+        JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        headerActions.setOpaque(false);
+        headerActions.add(addSongsButton);
+        headerActions.add(librarySearchField);
         libraryHeader.add(songsTitle, BorderLayout.WEST);
-        libraryHeader.add(librarySearchField, BorderLayout.EAST);
-
-        JPanel importForm = new JPanel(new GridLayout(0, 2, 8, 8));
-        importForm.setBackground(DEEP_NAVY);
-        importForm.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(STEEL_BLUE), "Import Song", 0, 0, null, CREAM));
-        importForm.add(createLabel("Title"));
-        importForm.add(titleField);
-        importForm.add(createLabel("Artist"));
-        importForm.add(artistField);
-        importForm.add(createLabel("Album"));
-        importForm.add(albumField);
-        importForm.add(createLabel("Genre"));
-        importForm.add(genreField);
-        importForm.add(createLabel("Source"));
-        importForm.add(sourceField);
-
-        RoundedButton importButton = createSecondaryButton("Manual Import");
-        RoundedButton importFromFileButton = createPrimaryButton("Add Songs to Library");
-        importButton.setAlignmentX(CENTER_ALIGNMENT);
-        importFromFileButton.setAlignmentX(CENTER_ALIGNMENT);
-        importButton.setMaximumSize(new Dimension(260, 40));
-        importFromFileButton.setMaximumSize(new Dimension(260, 40));
-        importButton.setPreferredSize(new Dimension(260, 40));
-        importFromFileButton.setPreferredSize(new Dimension(260, 40));
-        
-        importButton.addActionListener(e -> importSong());
-        importFromFileButton.addActionListener(e -> importSongFromAudioFile());
+        libraryHeader.add(headerActions, BorderLayout.EAST);
 
         JPanel playlistActions = new JPanel(new GridLayout(0, 1, 8, 8));
         playlistActions.setBackground(DEEP_NAVY);
@@ -976,12 +956,6 @@ public class VibeVaultFrame extends JFrame {
         JPanel leftColumn = new JPanel();
         leftColumn.setBackground(DEEP_NAVY);
         leftColumn.setLayout(new BoxLayout(leftColumn, BoxLayout.Y_AXIS));
-        leftColumn.add(importForm);
-        leftColumn.add(Box.createRigidArea(new Dimension(0, 8)));
-        leftColumn.add(importButton);
-        leftColumn.add(Box.createRigidArea(new Dimension(0, 8)));
-        leftColumn.add(importFromFileButton);
-        leftColumn.add(Box.createRigidArea(new Dimension(0, 16)));
         leftColumn.add(playlistActions);
         summaryLabel.setForeground(CREAM);
         leftColumn.add(Box.createVerticalGlue());
@@ -1084,7 +1058,7 @@ public class VibeVaultFrame extends JFrame {
         });
 
         panel.add(libraryHeader, BorderLayout.NORTH);
-        panel.add(leftColumn, BorderLayout.WEST);
+        panel.add(leftScroll, BorderLayout.WEST);
         panel.add(mainCenterSplit, BorderLayout.CENTER);
         panel.add(bottomPanel, BorderLayout.SOUTH);
         return panel;
@@ -1207,59 +1181,188 @@ public class VibeVaultFrame extends JFrame {
         }
     }
 
-    private void importSongFromAudioFile() {
+    private void showAddSongsDialog() {
         User currentUser = requireCurrentUser();
-        JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setDialogTitle("Select Audio Files");
-        fileChooser.setFileFilter(new FileNameExtensionFilter("Audio Files (*.mp3, *.wav)", "mp3", "wav"));
-        fileChooser.setMultiSelectionEnabled(true);
-        int selection = fileChooser.showOpenDialog(this);
-        if (selection != JFileChooser.APPROVE_OPTION) {
-            return;
-        }
 
-        File[] selectedFiles = fileChooser.getSelectedFiles();
-        if (selectedFiles == null || selectedFiles.length == 0) {
-            return;
-        }
+        JDialog dialog = new JDialog(this, "Add Songs", true);
+        dialog.setSize(700, 460);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout(10, 10));
 
-        List<java.nio.file.Path> paths = Arrays.stream(selectedFiles)
-                .map(File::toPath)
-                .collect(Collectors.toList());
+        JPanel root = new JPanel(new BorderLayout(10, 10));
+        root.setBackground(DEEP_NAVY);
+        root.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
 
-        ProgressMonitor progressMonitor = new ProgressMonitor(this, "Importing Songs", "Initializing...", 0, paths.size());
-        progressMonitor.setMillisToDecideToPopup(100);
-        progressMonitor.setMillisToPopup(100);
+        JLabel title = new JLabel("Import MP3 Songs");
+        title.setForeground(CREAM);
+        title.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        JLabel subtitle = new JLabel("Choose one or more MP3 files and import them into your library.");
+        subtitle.setForeground(new Color(0xA2A89A));
+        subtitle.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        JPanel titlePanel = new JPanel(new GridLayout(0, 1, 0, 2));
+        titlePanel.setOpaque(false);
+        titlePanel.add(title);
+        titlePanel.add(subtitle);
 
-        SwingWorker<Integer, Integer> worker = new SwingWorker<>() {
-            @Override
-            protected Integer doInBackground() {
-                return libraryService.importSongs(currentUser.getUserId(), paths, count -> {
-                    publish(count);
-                });
+        DefaultListModel<File> selectedFilesModel = new DefaultListModel<>();
+        JList<File> selectedFilesList = new JList<>(selectedFilesModel);
+        selectedFilesList.setBackground(ABYSS);
+        selectedFilesList.setForeground(CREAM);
+        selectedFilesList.setSelectionBackground(STEEL_BLUE);
+        selectedFilesList.setSelectionForeground(CREAM);
+        selectedFilesList.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        selectedFilesList.setCellRenderer((list, value, index, isSelected, cellHasFocus) -> {
+            JLabel label = new JLabel(value.getName());
+            label.setOpaque(true);
+            if (isSelected) {
+                label.setBackground(STEEL_BLUE);
+                label.setForeground(CREAM);
+            } else {
+                label.setBackground(ABYSS);
+                label.setForeground(CREAM);
             }
+            label.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 6));
+            label.setToolTipText(value.getAbsolutePath());
+            return label;
+        });
+        JScrollPane filesScroll = new JScrollPane(selectedFilesList);
+        styleScrollPane(filesScroll);
+        filesScroll.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(STEEL_BLUE),
+                "Selected Files",
+                0,
+                0,
+                new Font("Segoe UI", Font.PLAIN, 12),
+                CREAM
+        ));
 
-            @Override
-            protected void process(List<Integer> chunks) {
-                int latestCount = chunks.get(chunks.size() - 1);
-                progressMonitor.setProgress(latestCount);
-                progressMonitor.setNote("Processed " + latestCount + " of " + paths.size() + " files...");
+        JLabel infoLabel = new JLabel("No files selected.");
+        infoLabel.setForeground(new Color(0xA2A89A));
+
+        RoundedButton browseButton = createSecondaryButton("Browse MP3 Files");
+        RoundedButton clearButton = createSecondaryButton("Clear");
+        RoundedButton importButton = createPrimaryButton("Import");
+        RoundedButton cancelButton = createSecondaryButton("Cancel");
+        importButton.setEnabled(false);
+
+        JProgressBar progressBar = new JProgressBar();
+        progressBar.setVisible(false);
+        progressBar.setBackground(ABYSS);
+        progressBar.setForeground(MUTED_BLUE);
+        progressBar.setStringPainted(true);
+
+        browseButton.addActionListener(e -> {
+            FileDialog chooser = new FileDialog(this, "Select MP3 Files", FileDialog.LOAD);
+            chooser.setFile("*.mp3");
+            chooser.setMultipleMode(true);
+            chooser.setFilenameFilter((dir, name) -> name != null && name.toLowerCase().endsWith(".mp3"));
+            chooser.setVisible(true);
+            File[] selectedFiles = chooser.getFiles();
+            if (selectedFiles == null || selectedFiles.length == 0) {
+                return;
             }
-
-            @Override
-            protected void done() {
-                try {
-                    int importedCount = get();
-                    progressMonitor.close();
-                    refreshLibraryAndStats(currentUser.getUserId());
-                    showToast("Successfully imported " + importedCount + " songs.");
-                } catch (Exception ex) {
-                    showError("Failed to import songs: " + ex.getMessage());
+            for (File file : selectedFiles) {
+                boolean exists = false;
+                for (int i = 0; i < selectedFilesModel.size(); i++) {
+                    if (selectedFilesModel.get(i).equals(file)) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    selectedFilesModel.addElement(file);
                 }
             }
-        };
+            int count = selectedFilesModel.size();
+            infoLabel.setText(count + " file(s) selected.");
+            importButton.setEnabled(count > 0);
+        });
 
-        worker.execute();
+        clearButton.addActionListener(e -> {
+            selectedFilesModel.clear();
+            infoLabel.setText("No files selected.");
+            importButton.setEnabled(false);
+            progressBar.setVisible(false);
+        });
+
+        cancelButton.addActionListener(e -> dialog.dispose());
+
+        importButton.addActionListener(e -> {
+            if (selectedFilesModel.isEmpty()) {
+                showError("Select at least one MP3 file");
+                return;
+            }
+
+            List<java.nio.file.Path> paths = new ArrayList<>();
+            for (int i = 0; i < selectedFilesModel.size(); i++) {
+                paths.add(selectedFilesModel.get(i).toPath());
+            }
+
+            browseButton.setEnabled(false);
+            clearButton.setEnabled(false);
+            importButton.setEnabled(false);
+            cancelButton.setEnabled(false);
+            progressBar.setMinimum(0);
+            progressBar.setMaximum(paths.size());
+            progressBar.setValue(0);
+            progressBar.setString("0 / " + paths.size());
+            progressBar.setVisible(true);
+
+            SwingWorker<Integer, Integer> worker = new SwingWorker<>() {
+                @Override
+                protected Integer doInBackground() {
+                    return libraryService.importSongs(currentUser.getUserId(), paths, this::publish);
+                }
+
+                @Override
+                protected void process(List<Integer> chunks) {
+                    int latest = chunks.get(chunks.size() - 1);
+                    progressBar.setValue(latest);
+                    progressBar.setString(latest + " / " + paths.size());
+                }
+
+                @Override
+                protected void done() {
+                    try {
+                        int importedCount = get();
+                        refreshLibraryAndStats(currentUser.getUserId());
+                        dialog.dispose();
+                        showToast("Successfully imported " + importedCount + " songs.");
+                    } catch (Exception ex) {
+                        browseButton.setEnabled(true);
+                        clearButton.setEnabled(true);
+                        cancelButton.setEnabled(true);
+                        importButton.setEnabled(!selectedFilesModel.isEmpty());
+                        showError("Failed to import songs: " + ex.getMessage());
+                    }
+                }
+            };
+            worker.execute();
+        });
+
+        JPanel top = new JPanel(new BorderLayout());
+        top.setOpaque(false);
+        top.add(titlePanel, BorderLayout.CENTER);
+
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttons.setOpaque(false);
+        buttons.add(browseButton);
+        buttons.add(clearButton);
+        buttons.add(importButton);
+        buttons.add(cancelButton);
+
+        JPanel bottom = new JPanel(new BorderLayout(8, 8));
+        bottom.setOpaque(false);
+        bottom.add(infoLabel, BorderLayout.WEST);
+        bottom.add(progressBar, BorderLayout.CENTER);
+        bottom.add(buttons, BorderLayout.EAST);
+
+        root.add(top, BorderLayout.NORTH);
+        root.add(filesScroll, BorderLayout.CENTER);
+        root.add(bottom, BorderLayout.SOUTH);
+
+        dialog.setContentPane(root);
+        dialog.setVisible(true);
     }
 
     private void addSelectedLibrarySongToSelectedPlaylist() {
