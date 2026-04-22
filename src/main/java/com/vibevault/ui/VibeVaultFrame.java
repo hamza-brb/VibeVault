@@ -20,6 +20,7 @@ import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -1195,14 +1196,12 @@ public class VibeVaultFrame extends JFrame {
         RoundedButton scanNowButton = createPrimaryButton("Scan Now");
 
         addButton.addActionListener(e -> {
-            FileDialog chooser = new FileDialog(this, "Select Folder to Watch", FileDialog.LOAD);
-            System.setProperty("apple.awt.fileDialogForDirectories", "true");
-            chooser.setVisible(true);
-            String dir = chooser.getDirectory();
-            String file = chooser.getFile();
-            System.setProperty("apple.awt.fileDialogForDirectories", "false");
-            if (dir != null) {
-                File folder = new File(dir, file != null ? file : "");
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            chooser.setDialogTitle("Select Folder to Watch");
+            int result = chooser.showOpenDialog(this);
+            if (result == JFileChooser.APPROVE_OPTION) {
+                File folder = chooser.getSelectedFile();
                 if (folder.exists() && folder.isDirectory()) {
                     String path = folder.getAbsolutePath();
                     libraryScanService.addWatchedFolder(currentUser.getUserId(), path);
@@ -1381,30 +1380,29 @@ public class VibeVaultFrame extends JFrame {
         progressBar.setStringPainted(true);
 
         browseButton.addActionListener(e -> {
-            FileDialog chooser = new FileDialog(this, "Select MP3 Files", FileDialog.LOAD);
-            chooser.setFile("*.mp3");
-            chooser.setMultipleMode(true);
-            chooser.setFilenameFilter((dir, name) -> name != null && name.toLowerCase().endsWith(".mp3"));
-            chooser.setVisible(true);
-            File[] selectedFiles = chooser.getFiles();
-            if (selectedFiles == null || selectedFiles.length == 0) {
-                return;
-            }
-            for (File file : selectedFiles) {
-                boolean exists = false;
-                for (int i = 0; i < selectedFilesModel.size(); i++) {
-                    if (selectedFilesModel.get(i).equals(file)) {
-                        exists = true;
-                        break;
+            JFileChooser chooser = new JFileChooser();
+            chooser.setMultiSelectionEnabled(true);
+            chooser.setDialogTitle("Select MP3 Files");
+            chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("MP3 Files", "mp3"));
+            int result = chooser.showOpenDialog(this);
+            if (result == JFileChooser.APPROVE_OPTION) {
+                File[] selectedFiles = chooser.getSelectedFiles();
+                for (File file : selectedFiles) {
+                    boolean exists = false;
+                    for (int i = 0; i < selectedFilesModel.size(); i++) {
+                        if (selectedFilesModel.get(i).equals(file)) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists) {
+                        selectedFilesModel.addElement(file);
                     }
                 }
-                if (!exists) {
-                    selectedFilesModel.addElement(file);
-                }
+                int count = selectedFilesModel.size();
+                infoLabel.setText(count + " file(s) selected.");
+                importButton.setEnabled(count > 0);
             }
-            int count = selectedFilesModel.size();
-            infoLabel.setText(count + " file(s) selected.");
-            importButton.setEnabled(count > 0);
         });
 
         clearButton.addActionListener(e -> {
