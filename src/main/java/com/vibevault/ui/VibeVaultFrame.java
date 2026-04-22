@@ -1474,9 +1474,7 @@ public class VibeVaultFrame extends JFrame {
                     readTextInput(titleField),
                     readTextInput(artistField),
                     null,
-                    readTextInput(sourceField),
-                    null,
-                    null
+                    readTextInput(sourceField)
             ));
             clearImportFields();
             refreshLibraryAndStats(currentUser.getUserId());

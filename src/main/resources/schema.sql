@@ -19,8 +19,6 @@ CREATE TABLE IF NOT EXISTS songs (
     artist_id        INTEGER NOT NULL,
     duration_seconds INTEGER,
     file_path        TEXT    NOT NULL UNIQUE,
-    track_number     INTEGER,
-    year             INTEGER,
     FOREIGN KEY (artist_id) REFERENCES artists(artist_id)
 );
 

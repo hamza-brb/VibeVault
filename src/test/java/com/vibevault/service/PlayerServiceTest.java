@@ -57,9 +57,9 @@ class PlayerServiceTest {
         tempFiles.add(songBPath);
         tempFiles.add(songCPath);
 
-        Song songA = songDAO.create(new Song(null, "Song A", artist.getArtistId(), 180, songAPath.toString(), 1, 2024));
-        Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), 180, songBPath.toString(), 2, 2024));
-        Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), 180, songCPath.toString(), 3, 2024));
+        Song songA = songDAO.create(new Song(null, "Song A", artist.getArtistId(), 180, songAPath.toString()));
+        Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), 180, songBPath.toString()));
+        Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), 180, songCPath.toString()));
         songs = List.of(songA, songB, songC);
     }
 

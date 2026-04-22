@@ -57,9 +57,9 @@ class StatsServiceTest {
 
         Artist artist1 = artistDAO.create(new Artist(null, "Adele", null));
         Artist artist2 = artistDAO.create(new Artist(null, "Imagine Dragons", null));
-        Song song1 = songDAO.create(new Song(null, "Easy On Me", artist1.getArtistId(), 224, "C:\\music\\easy-on-me.mp3", 1, 2021));
-        Song song2 = songDAO.create(new Song(null, "Believer", artist2.getArtistId(), 204, "C:\\music\\believer.mp3", 1, 2017));
-        Song song3 = songDAO.create(new Song(null, "Enemy", artist2.getArtistId(), 173, "C:\\music\\enemy.mp3", 2, 2021));
+        Song song1 = songDAO.create(new Song(null, "Easy On Me", artist1.getArtistId(), 224, "C:\\music\\easy-on-me.mp3"));
+        Song song2 = songDAO.create(new Song(null, "Believer", artist2.getArtistId(), 204, "C:\\music\\believer.mp3"));
+        Song song3 = songDAO.create(new Song(null, "Enemy", artist2.getArtistId(), 173, "C:\\music\\enemy.mp3"));
 
         playHistoryDAO.logPlay(user1.getUserId(), song1.getSongId(), 120);
         playHistoryDAO.logPlay(user1.getUserId(), song1.getSongId(), 90);
@@ -87,7 +87,7 @@ class StatsServiceTest {
     void shouldReturnRecentlyPlayedInNewestFirstOrder() {
         User user = userDAO.create(new User(null, "listener", "hash-listener", null));
         Artist artist = artistDAO.create(new Artist(null, "OneRepublic", null));
-        Song song = songDAO.create(new Song(null, "Counting Stars", artist.getArtistId(), 257, "C:\\music\\counting-stars.mp3", 1, 2013));
+        Song song = songDAO.create(new Song(null, "Counting Stars", artist.getArtistId(), 257, "C:\\music\\counting-stars.mp3"));
 
         playHistoryDAO.logPlay(user.getUserId(), song.getSongId(), 50);
         playHistoryDAO.logPlay(user.getUserId(), song.getSongId(), 80);
@@ -102,9 +102,9 @@ class StatsServiceTest {
     void shouldReturnLongestSessionAndWeeklyActivity() {
         User user = userDAO.create(new User(null, "report-user", "hash", null));
         Artist artist = artistDAO.create(new Artist(null, "The Weeknd", null));
-        Song songA = songDAO.create(new Song(null, "Blinding Lights", artist.getArtistId(), 200, "library://blinding-lights", 1, 2020));
-        Song songB = songDAO.create(new Song(null, "Save Your Tears", artist.getArtistId(), 215, "library://save-your-tears", 2, 2020));
-        Song songC = songDAO.create(new Song(null, "Take My Breath", artist.getArtistId(), 220, "library://take-my-breath", 1, 2022));
+        Song songA = songDAO.create(new Song(null, "Blinding Lights", artist.getArtistId(), 200, "library://blinding-lights"));
+        Song songB = songDAO.create(new Song(null, "Save Your Tears", artist.getArtistId(), 215, "library://save-your-tears"));
+        Song songC = songDAO.create(new Song(null, "Take My Breath", artist.getArtistId(), 220, "library://take-my-breath"));
 
         int play1 = playHistoryDAO.logPlay(user.getUserId(), songA.getSongId(), 120).getPlayId();
         int play2 = playHistoryDAO.logPlay(user.getUserId(), songB.getSongId(), 240).getPlayId();
@@ -154,8 +154,8 @@ class StatsServiceTest {
 
         Artist artist1 = artistDAO.create(new Artist(null, "Admin Artist A", null));
         Artist artist2 = artistDAO.create(new Artist(null, "Admin Artist B", null));
-        Song song1 = songDAO.create(new Song(null, "Global Song 1", artist1.getArtistId(), 200, "library://admin/song1", 1, 2024));
-        Song song2 = songDAO.create(new Song(null, "Global Song 2", artist2.getArtistId(), 180, "library://admin/song2", 1, 2024));
+        Song song1 = songDAO.create(new Song(null, "Global Song 1", artist1.getArtistId(), 200, "library://admin/song1"));
+        Song song2 = songDAO.create(new Song(null, "Global Song 2", artist2.getArtistId(), 180, "library://admin/song2"));
 
         playHistoryDAO.logPlay(user1.getUserId(), song1.getSongId(), 60);
         playHistoryDAO.logPlay(user2.getUserId(), song1.getSongId(), 90);

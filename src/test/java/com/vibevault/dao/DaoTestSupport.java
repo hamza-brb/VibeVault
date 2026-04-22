@@ -25,7 +25,7 @@ class DaoTestSupport {
     }
 
     Song createSong(SongDAO songDAO, int artistId, String title, String filePath) {
-        Song song = new Song(null, title, artistId, 180, filePath, 1, 2024);
+        Song song = new Song(null, title, artistId, 180, filePath);
         return songDAO.create(song);
     }
 }

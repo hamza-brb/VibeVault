@@ -6,21 +6,17 @@ public class Song {
     private Integer artistId;
     private Integer durationSeconds;
     private String filePath;
-    private Integer trackNumber;
-    private Integer year;
 
     public Song() {
     }
 
     public Song(Integer songId, String title, Integer artistId,
-                Integer durationSeconds, String filePath, Integer trackNumber, Integer year) {
+                Integer durationSeconds, String filePath) {
         this.songId = songId;
         this.title = title;
         this.artistId = artistId;
         this.durationSeconds = durationSeconds;
         this.filePath = filePath;
-        this.trackNumber = trackNumber;
-        this.year = year;
     }
 
     public Integer getSongId() {
@@ -61,21 +57,5 @@ public class Song {
 
     public void setFilePath(String filePath) {
         this.filePath = filePath;
-    }
-
-    public Integer getTrackNumber() {
-        return trackNumber;
-    }
-
-    public void setTrackNumber(Integer trackNumber) {
-        this.trackNumber = trackNumber;
-    }
-
-    public Integer getYear() {
-        return year;
-    }
-
-    public void setYear(Integer year) {
-        this.year = year;
     }
 }

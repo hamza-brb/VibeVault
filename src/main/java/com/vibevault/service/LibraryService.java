@@ -56,9 +56,7 @@ public class LibraryService {
                 title,
                 artist.getArtistId(),
                 request.durationSeconds(),
-                mediaSource,
-                request.trackNumber(),
-                request.year()
+                mediaSource
         )));
 
         songDAO.addToUserLibraryIfMissing(userId, song.getSongId());
@@ -97,9 +95,7 @@ public class LibraryService {
                 metadata.title(),
                 metadata.artistName(),
                 metadata.durationSeconds(),
-                normalized.toString(),
-                metadata.trackNumber(),
-                metadata.year()
+                normalized.toString()
         ));
     }
 
@@ -144,11 +140,11 @@ public class LibraryService {
     }
 
     public List<Song> getSongsByArtistInUserLibrary(int userId, int artistId) {
-        String sql = "SELECT s.song_id, s.title, s.artist_id, s.duration_seconds, s.file_path, s.track_number, s.year " +
+        String sql = "SELECT s.song_id, s.title, s.artist_id, s.duration_seconds, s.file_path " +
                 "FROM songs s " +
                 "JOIN user_library ul ON s.song_id = ul.song_id " +
                 "WHERE ul.user_id = ? AND s.artist_id = ? " +
-                "ORDER BY COALESCE(s.track_number, 2147483647), s.title ASC";
+                "ORDER BY s.title ASC";
         return querySongs(sql, userId, artistId);
     }
 
@@ -165,9 +161,7 @@ public class LibraryService {
                             rs.getString("title"),
                             rs.getInt("artist_id"),
                             (Integer) rs.getObject("duration_seconds"),
-                            rs.getString("file_path"),
-                            (Integer) rs.getObject("track_number"),
-                            (Integer) rs.getObject("year")
+                            rs.getString("file_path")
                     ));
                 }
             }
@@ -182,8 +176,6 @@ public class LibraryService {
         String title = fallbackTitle;
         String artistName = deriveArtistFallback(audioFilePath);
         Integer durationSeconds = null;
-        Integer trackNumber = null;
-        Integer year = null;
 
         try {
             AudioFile audioFile = AudioFileIO.read(audioFilePath.toFile());
@@ -191,8 +183,6 @@ public class LibraryService {
             if (tag != null) {
                 title = firstNonBlank(tag.getFirst(FieldKey.TITLE), title);
                 artistName = firstNonBlank(tag.getFirst(FieldKey.ARTIST), artistName);
-                trackNumber = parseOptionalInteger(tag.getFirst(FieldKey.TRACK));
-                year = parseOptionalInteger(tag.getFirst(FieldKey.YEAR));
             }
 
             AudioHeader audioHeader = audioFile.getAudioHeader();
@@ -207,7 +197,7 @@ public class LibraryService {
             title = stripExtension(Path.of(title).getFileName().toString());
         }
 
-        return new FileMetadata(title, artistName, durationSeconds, trackNumber, year);
+        return new FileMetadata(title, artistName, durationSeconds);
     }
 
     private static String deriveArtistFallback(Path audioFilePath) {
@@ -292,24 +282,6 @@ public class LibraryService {
         return normalized != null ? normalized : fallback;
     }
 
-    private static Integer parseOptionalInteger(String value) {
-        String normalized = normalizeOptional(value);
-        if (normalized == null) {
-            return null;
-        }
-        int slashIndex = normalized.indexOf('/');
-        String firstPart = slashIndex >= 0 ? normalized.substring(0, slashIndex) : normalized;
-        String numeric = firstPart.trim();
-        if (numeric.isEmpty()) {
-            return null;
-        }
-        try {
-            return Integer.parseInt(numeric);
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
-    }
-
     private static String normalizeRequired(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");
@@ -329,18 +301,14 @@ public class LibraryService {
             String title,
             String artistName,
             Integer durationSeconds,
-            String mediaSource,
-            Integer trackNumber,
-            Integer year
+            String mediaSource
     ) {
     }
 
     private record FileMetadata(
             String title,
             String artistName,
-            Integer durationSeconds,
-            Integer trackNumber,
-            Integer year
+            Integer durationSeconds
     ) {
     }
 

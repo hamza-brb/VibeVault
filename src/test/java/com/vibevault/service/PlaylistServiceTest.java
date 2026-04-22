@@ -116,9 +116,9 @@ class PlaylistServiceTest {
     private SeedData seedSongs() {
         User user = userDAO.create(new User(null, "playlist-user-" + UUID.randomUUID(), "hash", null));
         Artist artist = artistDAO.create(new Artist(null, "Artist " + UUID.randomUUID(), null));
-        Song songA = songDAO.create(new Song(null, "Song A", artist.getArtistId(), 180, "C:\\music\\song-a-" + UUID.randomUUID() + ".mp3", 1, 2024));
-        Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), 190, "C:\\music\\song-b-" + UUID.randomUUID() + ".mp3", 2, 2024));
-        Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), 200, "C:\\music\\song-c-" + UUID.randomUUID() + ".mp3", 3, 2024));
+        Song songA = songDAO.create(new Song(null, "Song A", artist.getArtistId(), 180, "C:\\music\\song-a-" + UUID.randomUUID() + ".mp3"));
+        Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), 190, "C:\\music\\song-b-" + UUID.randomUUID() + ".mp3"));
+        Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), 200, "C:\\music\\song-c-" + UUID.randomUUID() + ".mp3"));
 
         songDAO.addToUserLibraryIfMissing(user.getUserId(), songA.getSongId());
         songDAO.addToUserLibraryIfMissing(user.getUserId(), songB.getSongId());
