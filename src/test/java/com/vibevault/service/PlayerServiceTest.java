@@ -15,6 +15,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
@@ -29,10 +33,11 @@ class PlayerServiceTest {
     private DatabaseManager databaseManager;
     private User user;
     private List<Song> songs;
+    private List<Path> tempFiles;
     private PlayHistoryDAO playHistoryDAO;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws IOException {
         String dbName = "vibevault_player_" + UUID.randomUUID();
         String dbUrl = "jdbc:sqlite:file:" + dbName + "?mode=memory&cache=shared";
         databaseManager = new DatabaseManager(dbUrl);
@@ -47,15 +52,29 @@ class PlayerServiceTest {
         user = userDAO.create(new User(null, "player-user", "hash", null));
         Artist artist = artistDAO.create(new Artist(null, "Player Artist", null));
         Album album = albumDAO.create(new Album(null, "Player Album", artist.getArtistId(), 2024, null));
-        Song songA = songDAO.create(new Song(null, "Song A", artist.getArtistId(), album.getAlbumId(), "Pop", 180, "library://player/song-a", 1, 2024));
-        Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), album.getAlbumId(), "Pop", 180, "library://player/song-b", 2, 2024));
-        Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), album.getAlbumId(), "Pop", 180, "library://player/song-c", 3, 2024));
+
+        tempFiles = new ArrayList<>();
+        Path songAPath = Files.createTempFile("song-a", ".mp3");
+        Path songBPath = Files.createTempFile("song-b", ".mp3");
+        Path songCPath = Files.createTempFile("song-c", ".mp3");
+        tempFiles.add(songAPath);
+        tempFiles.add(songBPath);
+        tempFiles.add(songCPath);
+
+        Song songA = songDAO.create(new Song(null, "Song A", artist.getArtistId(), album.getAlbumId(), "Pop", 180, songAPath.toString(), 1, 2024));
+        Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), album.getAlbumId(), "Pop", 180, songBPath.toString(), 2, 2024));
+        Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), album.getAlbumId(), "Pop", 180, songCPath.toString(), 3, 2024));
         songs = List.of(songA, songB, songC);
     }
 
     @AfterEach
     void tearDown() {
         databaseManager.close();
+        for (Path path : tempFiles) {
+            try {
+                Files.deleteIfExists(path);
+            } catch (IOException ignored) {}
+        }
     }
 
     @Test
@@ -103,26 +122,26 @@ class PlayerServiceTest {
     }
 
     @Test
-    void shouldLogOnlyPlaybackLongerThanTenSeconds() {
+    void shouldLogOnlyPlaybackLongerThanFiveSeconds() {
         PlayerService playerService = new PlayerService(databaseManager);
         playerService.setQueue(songs);
 
-        Optional<PlayHistory> ignored = playerService.logCurrentSongPlayback(user.getUserId(), 10);
+        Optional<PlayHistory> ignored = playerService.logCurrentSongPlayback(user.getUserId(), 4);
         assertTrue(ignored.isEmpty());
         assertEquals(0, playHistoryDAO.findRecentByUser(user.getUserId(), 10).size());
 
-        assertTrue(playerService.logCurrentSongPlayback(user.getUserId(), 11).isPresent());
+        assertTrue(playerService.logCurrentSongPlayback(user.getUserId(), 5).isPresent());
         assertEquals(1, playHistoryDAO.findRecentByUser(user.getUserId(), 10).size());
     }
 
     @Test
-    void shouldAutoLogPlaybackWhenActiveUserPausesAfterTenSeconds() {
+    void shouldAutoLogPlaybackWhenActiveUserPausesAfterFiveSeconds() {
         PlayerService playerService = new PlayerService(databaseManager);
         playerService.setActiveUserId(user.getUserId());
         playerService.setQueue(songs);
 
         playerService.play();
-        playerService.seekToSecond(11);
+        playerService.seekToSecond(6);
         playerService.pause();
 
         assertEquals(1, playHistoryDAO.findRecentByUser(user.getUserId(), 10).size());
@@ -150,13 +169,13 @@ class PlayerServiceTest {
     }
 
     @Test
-    void shouldRejectManualQueueEditsWhenShuffleIsOn() {
+    void shouldAllowManualQueueEditsWhenShuffleIsOn() {
         PlayerService playerService = new PlayerService(databaseManager, new Random(9));
         playerService.setQueue(songs);
         playerService.setShuffleEnabled(true);
 
-        assertThrows(IllegalStateException.class, () -> playerService.moveQueueItem(0, 1));
-        assertThrows(IllegalStateException.class, () -> playerService.removeQueueItem(0));
+        assertTrue(playerService.moveQueueItem(0, 1));
+        assertTrue(playerService.removeQueueItem(0));
     }
 
     @Test

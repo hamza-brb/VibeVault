@@ -77,3 +77,14 @@ CREATE INDEX IF NOT EXISTS idx_play_history_song ON play_history(song_id);
 CREATE INDEX IF NOT EXISTS idx_play_history_date ON play_history(played_at);
 CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist_id);
 CREATE INDEX IF NOT EXISTS idx_songs_album ON songs(album_id);
+
+CREATE TABLE IF NOT EXISTS watched_folders (
+    folder_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    folder_path TEXT   NOT NULL,
+    added_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, folder_path),
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_watched_folders_user ON watched_folders(user_id);

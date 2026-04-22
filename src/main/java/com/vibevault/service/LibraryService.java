@@ -246,7 +246,7 @@ public class LibraryService {
     private FileMetadata readFileMetadata(Path audioFilePath) {
         String fallbackTitle = stripExtension(audioFilePath.getFileName().toString());
         String title = fallbackTitle;
-        String artistName = "Unknown Artist";
+        String artistName = deriveArtistFallback(audioFilePath);
         String albumTitle = null;
         String genre = null;
         Integer durationSeconds = null;
@@ -278,6 +278,11 @@ public class LibraryService {
             // Fallback metadata is used when tags cannot be read.
         }
 
+        if (title.contains("\\") || title.contains("/")) {
+            // Title looks like a path — strip it down to filename
+            title = stripExtension(Path.of(title).getFileName().toString());
+        }
+
         return new FileMetadata(
                 title,
                 artistName,
@@ -288,6 +293,88 @@ public class LibraryService {
                 year,
                 coverArtBytes
         );
+    }
+
+    /**
+     * Attempts to derive an artist name from the file path.
+     * Strategy: parent folder name → filename prefix before " - " → "Unknown Artist"
+     */
+    private static String deriveArtistFallback(Path audioFilePath) {
+        // Strategy 1: Check if filename follows "Artist - Title.mp3" convention
+        String fileName = stripExtension(audioFilePath.getFileName().toString());
+        int dashIndex = fileName.indexOf(" - ");
+        if (dashIndex > 0) {
+            String candidate = fileName.substring(0, dashIndex).trim();
+            if (!candidate.isBlank()) {
+                return candidate;
+            }
+        }
+
+        // Strategy 2: Use parent folder name (often the artist name)
+        Path parent = audioFilePath.getParent();
+        if (parent != null) {
+            Path parentFileName = parent.getFileName();
+            String folderName = parentFileName != null ? parentFileName.toString().trim() : "";
+            // Exclude generic folder names
+            if (!folderName.isBlank()
+                    && !folderName.equalsIgnoreCase("Music")
+                    && !folderName.equalsIgnoreCase("Downloads")
+                    && !folderName.equalsIgnoreCase("mp3")
+                    && !folderName.equalsIgnoreCase("songs")
+                    && !folderName.equalsIgnoreCase("Temp")
+                    && !folderName.equalsIgnoreCase("tmp")) {
+                return folderName;
+            }
+        }
+
+        return "Unknown Artist";
+    }
+
+    /**
+     * Merges all duplicate "Unknown Artist" entries created across multiple imports.
+     * Keeps the lowest artist_id and reassigns all songs and albums to it.
+     */
+    public void consolidateUnknownArtists() {
+        String findMinId = "SELECT MIN(artist_id) FROM artists WHERE name = 'Unknown Artist'";
+        String updateSongs = "UPDATE songs SET artist_id = ? WHERE artist_id IN (SELECT artist_id FROM artists WHERE name = 'Unknown Artist')";
+        String updateAlbums = "UPDATE albums SET artist_id = ? WHERE artist_id IN (SELECT artist_id FROM artists WHERE name = 'Unknown Artist')";
+        String deleteDuplicates = "DELETE FROM artists WHERE name = 'Unknown Artist' AND artist_id != ?";
+
+        try (Connection conn = databaseManager.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                Integer minId = null;
+                try (PreparedStatement ps = conn.prepareStatement(findMinId);
+                     ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        minId = (Integer) rs.getObject(1);
+                    }
+                }
+
+                if (minId != null) {
+                    try (PreparedStatement ps = conn.prepareStatement(updateSongs)) {
+                        ps.setInt(1, minId);
+                        ps.executeUpdate();
+                    }
+                    try (PreparedStatement ps = conn.prepareStatement(updateAlbums)) {
+                        ps.setInt(1, minId);
+                        ps.executeUpdate();
+                    }
+                    try (PreparedStatement ps = conn.prepareStatement(deleteDuplicates)) {
+                        ps.setInt(1, minId);
+                        ps.executeUpdate();
+                    }
+                }
+                conn.commit();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to consolidate unknown artists", e);
+        }
     }
 
     private void persistAlbumCoverArtIfNeeded(Song song, byte[] coverArtBytes) {
@@ -324,6 +411,9 @@ public class LibraryService {
 
     private static String firstNonBlank(String candidate, String fallback) {
         String normalized = normalizeOptional(candidate);
+        if (normalized != null && (normalized.equalsIgnoreCase("Unknown Artist") || normalized.equalsIgnoreCase("Unknown"))) {
+            return fallback;
+        }
         return normalized != null ? normalized : fallback;
     }
 

@@ -132,6 +132,20 @@ public class SongDAO {
         }
     }
 
+    public boolean isInUserLibrary(int userId, int songId) {
+        String sql = "SELECT 1 FROM user_library WHERE user_id = ? AND song_id = ?";
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, userId);
+            statement.setInt(2, songId);
+            try (ResultSet rs = statement.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to check if song is in user library", e);
+        }
+    }
+
     public boolean delete(int songId) {
         String sql = "DELETE FROM songs WHERE song_id = ?";
         try (Connection connection = databaseManager.getConnection();

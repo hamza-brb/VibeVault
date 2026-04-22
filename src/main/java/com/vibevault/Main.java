@@ -4,6 +4,7 @@ import com.vibevault.dao.UserDAO;
 import com.vibevault.db.DatabaseManager;
 import com.vibevault.service.AuthService;
 import com.vibevault.service.LibraryService;
+import com.vibevault.service.LibraryScanService;
 import com.vibevault.service.PlayerService;
 import com.vibevault.service.PlaylistService;
 import com.vibevault.service.StatsService;
@@ -24,11 +25,13 @@ public class Main {
         UserDAO userDAO = new UserDAO(databaseManager);
         AuthService authService = new AuthService(userDAO);
         LibraryService libraryService = new LibraryService(databaseManager);
+        libraryService.consolidateUnknownArtists();
         PlaylistService playlistService = new PlaylistService(databaseManager);
         PlayerService playerService = new PlayerService(databaseManager);
         StatsService statsService = new StatsService(databaseManager);
+        LibraryScanService libraryScanService = new LibraryScanService(databaseManager, libraryService);
 
-        VibeVaultFrame.launch(authService, libraryService, playlistService, playerService, statsService);
+        VibeVaultFrame.launch(authService, libraryService, playlistService, playerService, statsService, libraryScanService);
     }
 
     private static void applyThemeDefaults() {

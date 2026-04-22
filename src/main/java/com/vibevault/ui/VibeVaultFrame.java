@@ -4,6 +4,7 @@ import com.vibevault.model.Playlist;
 import com.vibevault.model.Song;
 import com.vibevault.model.User;
 import com.vibevault.service.AuthService;
+import com.vibevault.service.LibraryScanService;
 import com.vibevault.service.LibraryService;
 import com.vibevault.service.PlayerService;
 import com.vibevault.service.PlaylistService;
@@ -28,6 +29,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JProgressBar;
+import javax.swing.JSlider;
 import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
@@ -47,6 +49,10 @@ import java.awt.Dimension;
 import java.awt.FileDialog;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.GridLayout;
 import java.io.File;
 import java.awt.event.MouseAdapter;
@@ -54,8 +60,11 @@ import java.awt.event.MouseEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
+import java.util.stream.Collectors;
 import javax.swing.SwingWorker;
 
 public class VibeVaultFrame extends JFrame {
@@ -79,6 +88,7 @@ public class VibeVaultFrame extends JFrame {
     private final PlaylistService playlistService;
     private final PlayerService playerService;
     private final StatsService statsService;
+    private final LibraryScanService libraryScanService;
 
     private final CardLayout cardLayout = new CardLayout();
     private final JPanel rootPanel = new JPanel(cardLayout);
@@ -100,6 +110,8 @@ public class VibeVaultFrame extends JFrame {
     private final JLabel summaryLabel = new JLabel("No data yet.");
     private final JLabel nowPlayingLabel = new JLabel("Now playing: -");
     private final RoundedButton playButton = createIconButton("▶");
+    private final RoundedButton repeatButton = createIconButton("🔁");
+    private final JSlider volumeSlider = new JSlider(0, 100, 70);
     private final JLabel statsTotalPlaysValueLabel = new JLabel("0");
     private final JLabel statsListeningValueLabel = new JLabel("0.0 min");
     private final JLabel statsTopArtistValueLabel = new JLabel("N/A");
@@ -111,10 +123,9 @@ public class VibeVaultFrame extends JFrame {
     private final JTextField sourceField = new JTextField();
     private final JTextField librarySearchField = new JTextField();
     private final JTextField playlistNameField = new JTextField();
-    private final JTextField listenedSecondsField = new JTextField();
 
     private final DefaultTableModel libraryTableModel = new DefaultTableModel(
-            new Object[]{"Song ID", "Title", "Artist ID", "Album ID", "Genre", "Source"}, 0
+            new Object[]{"#", "Title", "Artist", "Album", "Genre", "Duration"}, 0
     ) {
         @Override
         public boolean isCellEditable(int row, int column) {
@@ -192,7 +203,7 @@ public class VibeVaultFrame extends JFrame {
     private final JLabel browseDetailLabel = new JLabel("Detail");
     private final JPanel browseDetailAlbumsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
     private final DefaultTableModel browseSongsTableModel = new DefaultTableModel(
-            new Object[]{"Song ID", "Title", "Artist ID", "Album ID", "Duration"}, 0
+            new Object[]{"#", "Title", "Artist", "Album", "Duration"}, 0
     ) {
         @Override
         public boolean isCellEditable(int row, int column) {
@@ -217,22 +228,28 @@ public class VibeVaultFrame extends JFrame {
     private final JTable playlistScreenSongsTable = new JTable(playlistScreenSongsModel);
     private final JLabel playlistScreenTitleLabel = new JLabel("Select a playlist");
     private final JLabel playlistScreenMetaLabel = new JLabel("0 songs");
-
-    private final JComboBox<PlayerService.RepeatMode> repeatModeCombo = new JComboBox<>(PlayerService.RepeatMode.values());
     private final RoundedButton shuffleButton = new RoundedButton("Shuffle: OFF", 12, DEEP_NAVY, STEEL_BLUE, ABYSS);
+    private final WeeklyBarChart weeklyBarChart = new WeeklyBarChart();
+    private final Map<Integer, String> artistNameCache = new HashMap<>();
+    private final Map<Integer, String> albumTitleCache = new HashMap<>();
+    private final List<Integer> librarySongIds = new ArrayList<>();
+    private final List<Integer> browseSongIds = new ArrayList<>();
+    private List<Song> currentBrowseSongs = List.of();
 
     public VibeVaultFrame(
             AuthService authService,
             LibraryService libraryService,
             PlaylistService playlistService,
             PlayerService playerService,
-            StatsService statsService
+            StatsService statsService,
+            LibraryScanService libraryScanService
     ) {
         this.authService = authService;
         this.libraryService = libraryService;
         this.playlistService = playlistService;
         this.playerService = playerService;
         this.statsService = statsService;
+        this.libraryScanService = libraryScanService;
 
         setTitle("VibeVault");
         setMinimumSize(new Dimension(1000, 650));
@@ -242,10 +259,33 @@ public class VibeVaultFrame extends JFrame {
         setContentPane(rootPanel);
         rootPanel.setBackground(ABYSS);
 
+        styleAllTables();
         styleShuffleButton();
         rootPanel.add(buildAuthPanel(), CARD_AUTH);
         rootPanel.add(buildDashboardPanel(), CARD_DASHBOARD);
         configureLibraryScreenInteractions();
+        configureBrowseScreenInteractions();
+
+        // Add property change listener for player service
+        this.playerService.addPropertyChangeListener(evt -> {
+            if ("playing".equals(evt.getPropertyName())) {
+                boolean nowPlaying = (Boolean) evt.getNewValue();
+                boolean wasPlaying = (Boolean) evt.getOldValue();
+                // Song ended naturally (was playing, now stopped, not paused by user)
+                if (wasPlaying && !nowPlaying) {
+                    SwingUtilities.invokeLater(() -> {
+                        playerService.next();   // respects RepeatMode and shuffle
+                        updateNowPlayingLabel();
+                        refreshQueueTable();
+                    });
+                }
+            }
+            if ("playbackError".equals(evt.getPropertyName())) {
+                SwingUtilities.invokeLater(() ->
+                        showToast("Cannot play: " + evt.getNewValue()));
+            }
+        });
+
         cardLayout.show(rootPanel, CARD_AUTH);
     }
 
@@ -253,6 +293,13 @@ public class VibeVaultFrame extends JFrame {
         shuffleButton.setForeground(CREAM);
         shuffleButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         shuffleButton.setBorder(BorderFactory.createLineBorder(STEEL_BLUE, 1, true));
+        repeatButton.setForeground(CREAM);
+        repeatButton.setFont(new Font("Segoe UI Symbol", Font.BOLD, 13));
+        repeatButton.setBorder(BorderFactory.createLineBorder(STEEL_BLUE, 1, true));
+        volumeSlider.setOpaque(false);
+        volumeSlider.setBackground(ABYSS);
+        volumeSlider.setForeground(CREAM);
+        volumeSlider.setValue(playerService.getVolumePercent());
     }
 
     private RoundedButton createPrimaryButton(String text) {
@@ -499,9 +546,26 @@ public class VibeVaultFrame extends JFrame {
         centerControls.add(playButton);
         centerControls.add(nextButton);
         centerControls.add(shuffleToggle);
+        centerControls.add(repeatButton);
+        repeatButton.addActionListener(e -> cycleRepeatMode());
+
+        volumeSlider.addChangeListener(e -> playerService.setVolumePercent(volumeSlider.getValue()));
+        JPanel volumePanel = new JPanel(new BorderLayout(4, 0));
+        volumePanel.setOpaque(false);
+        JLabel volumeLabel = new JLabel("Vol");
+        volumeLabel.setForeground(CREAM);
+        volumeLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        volumePanel.add(volumeLabel, BorderLayout.WEST);
+        volumePanel.add(volumeSlider, BorderLayout.CENTER);
+
+        nowPlayingLabel.setForeground(CREAM);
+        nowPlayingLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        nowPlayingLabel.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
+        nowPlayingLabel.setPreferredSize(new Dimension(320, 70));
 
         bar.add(nowPlayingLabel, BorderLayout.WEST);
         bar.add(centerControls, BorderLayout.CENTER);
+        bar.add(volumePanel, BorderLayout.EAST);
         return bar;
     }
 
@@ -544,12 +608,15 @@ public class VibeVaultFrame extends JFrame {
         detail.setBackground(DEEP_NAVY);
         RoundedButton backButton = createSecondaryButton("← Back");
         backButton.addActionListener(e -> browseCardLayout.show(browseCardPanel, BROWSE_GRID));
+        RoundedButton playAllButton = createPrimaryButton("▶ Play All");
+        playAllButton.addActionListener(e -> playCurrentBrowseSongs());
         JPanel detailTop = new JPanel(new BorderLayout());
         detailTop.setOpaque(false);
         browseDetailLabel.setForeground(CREAM);
         browseDetailLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
         detailTop.add(backButton, BorderLayout.WEST);
         detailTop.add(browseDetailLabel, BorderLayout.CENTER);
+        detailTop.add(playAllButton, BorderLayout.EAST);
 
         browseDetailAlbumsPanel.setBackground(DEEP_NAVY);
         JScrollPane albumsStripScroll = new JScrollPane(browseDetailAlbumsPanel);
@@ -560,8 +627,12 @@ public class VibeVaultFrame extends JFrame {
         styleScrollPane(songsScroll);
 
         detail.add(detailTop, BorderLayout.NORTH);
-        detail.add(albumsStripScroll, BorderLayout.CENTER);
-        detail.add(songsScroll, BorderLayout.SOUTH);
+        JSplitPane detailSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, albumsStripScroll, songsScroll);
+        detailSplit.setResizeWeight(0.25);
+        detailSplit.setDividerSize(4);
+        detailSplit.setBorder(null);
+        detailSplit.setBackground(DEEP_NAVY);
+        detail.add(detailSplit, BorderLayout.CENTER);
         browseCardPanel.add(detail, BROWSE_DETAIL);
 
         panel.add(header, BorderLayout.NORTH);
@@ -627,7 +698,8 @@ public class VibeVaultFrame extends JFrame {
             button.addActionListener(e -> fillBrowseSongsTable(libraryService.getSongsByAlbumInUserLibrary(user.getUserId(), album.albumId())));
             browseDetailAlbumsPanel.add(button);
         }
-        fillBrowseSongsTable(libraryService.getSongsByArtistInUserLibrary(user.getUserId(), artistId));
+        currentBrowseSongs = libraryService.getSongsByArtistInUserLibrary(user.getUserId(), artistId);
+        fillBrowseSongsTable(currentBrowseSongs);
         browseDetailAlbumsPanel.revalidate();
         browseDetailAlbumsPanel.repaint();
         browseCardLayout.show(browseCardPanel, BROWSE_DETAIL);
@@ -637,7 +709,8 @@ public class VibeVaultFrame extends JFrame {
         User user = requireCurrentUser();
         browseDetailLabel.setText(albumTitle + " — " + artistName);
         browseDetailAlbumsPanel.removeAll();
-        fillBrowseSongsTable(libraryService.getSongsByAlbumInUserLibrary(user.getUserId(), albumId));
+        currentBrowseSongs = libraryService.getSongsByAlbumInUserLibrary(user.getUserId(), albumId);
+        fillBrowseSongsTable(currentBrowseSongs);
         browseDetailAlbumsPanel.revalidate();
         browseDetailAlbumsPanel.repaint();
         browseCardLayout.show(browseCardPanel, BROWSE_DETAIL);
@@ -645,13 +718,17 @@ public class VibeVaultFrame extends JFrame {
 
     private void fillBrowseSongsTable(List<Song> songs) {
         browseSongsTableModel.setRowCount(0);
+        browseSongIds.clear();
+        currentBrowseSongs = List.copyOf(songs);
+        int rowNum = 1;
         for (Song song : songs) {
+            browseSongIds.add(song.getSongId());
             browseSongsTableModel.addRow(new Object[]{
-                    song.getSongId(),
+                    rowNum++,
                     song.getTitle(),
-                    song.getArtistId(),
-                    song.getAlbumId(),
-                    song.getDurationSeconds()
+                    lookupArtistName(song.getArtistId()),
+                    lookupAlbumTitle(song.getAlbumId()),
+                    formatDuration(song.getDurationSeconds())
             });
         }
     }
@@ -662,8 +739,23 @@ public class VibeVaultFrame extends JFrame {
         panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
         JScrollPane leftListScroll = new JScrollPane(playlistScreenListTable);
-        leftListScroll.setPreferredSize(new Dimension(260, 0));
         styleScrollPane(leftListScroll);
+
+        JPanel leftPanel = new JPanel(new BorderLayout(0, 8));
+        leftPanel.setOpaque(false);
+        JPanel leftHeader = new JPanel(new BorderLayout(8, 0));
+        leftHeader.setOpaque(false);
+        JLabel playlistsLabel = new JLabel("Playlists");
+        playlistsLabel.setForeground(CREAM);
+        playlistsLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        RoundedButton createButton = createPrimaryButton("+ New");
+        createButton.setPreferredSize(new Dimension(80, 32));
+        createButton.addActionListener(e -> showCreatePlaylistDialog());
+        leftHeader.add(playlistsLabel, BorderLayout.WEST);
+        leftHeader.add(createButton, BorderLayout.EAST);
+        leftPanel.add(leftHeader, BorderLayout.NORTH);
+        leftPanel.add(leftListScroll, BorderLayout.CENTER);
+        leftPanel.setPreferredSize(new Dimension(260, 0));
 
         JPanel right = new JPanel(new BorderLayout(8, 8));
         right.setOpaque(false);
@@ -677,12 +769,15 @@ public class VibeVaultFrame extends JFrame {
         JPanel actions = new JPanel();
         actions.setOpaque(false);
         RoundedButton playButton = createPrimaryButton("▶ Play");
+        RoundedButton addSongButton = createSecondaryButton("+ Add Songs");
         RoundedButton renameButton = createSecondaryButton("✏ Rename");
         RoundedButton deleteButton = createSecondaryButton("🗑 Delete");
         playButton.addActionListener(e -> playSelectedPlaylistScreen());
+        addSongButton.addActionListener(e -> showAddSongsToPlaylistDialog(getSelectedPlaylistScreenId()));
         renameButton.addActionListener(e -> renameSelectedPlaylistScreen());
         deleteButton.addActionListener(e -> deleteSelectedPlaylistScreen());
         actions.add(playButton);
+        actions.add(addSongButton);
         actions.add(renameButton);
         actions.add(deleteButton);
         header.add(playlistScreenTitleLabel, BorderLayout.NORTH);
@@ -714,7 +809,7 @@ public class VibeVaultFrame extends JFrame {
             }
         });
 
-        panel.add(leftListScroll, BorderLayout.WEST);
+        panel.add(leftPanel, BorderLayout.WEST);
         panel.add(right, BorderLayout.CENTER);
         return panel;
     }
@@ -858,6 +953,12 @@ public class VibeVaultFrame extends JFrame {
         styleScrollPane(topArtistsScroll);
         topSongsScroll.setBorder(BorderFactory.createTitledBorder("Top 5 Songs"));
         topArtistsScroll.setBorder(BorderFactory.createTitledBorder("Top 5 Artists"));
+        topSongsStatsTable.getColumnModel().getColumn(0).setPreferredWidth(200);
+        topSongsStatsTable.getColumnModel().getColumn(1).setPreferredWidth(50);
+        topSongsStatsTable.getColumnModel().getColumn(2).setPreferredWidth(70);
+        topArtistsStatsTable.getColumnModel().getColumn(0).setPreferredWidth(160);
+        topArtistsStatsTable.getColumnModel().getColumn(1).setPreferredWidth(50);
+        topArtistsStatsTable.getColumnModel().getColumn(2).setPreferredWidth(70);
 
         lists.add(topSongsScroll);
         lists.add(topArtistsScroll);
@@ -867,15 +968,32 @@ public class VibeVaultFrame extends JFrame {
         JLabel weeklyTitle = new JLabel("Weekly Activity");
         weeklyTitle.setForeground(CREAM);
         weeklySection.add(weeklyTitle, BorderLayout.NORTH);
-        JScrollPane weeklyScroll = new JScrollPane(weeklyActivityTable);
-        styleScrollPane(weeklyScroll);
-        weeklySection.add(weeklyScroll, BorderLayout.CENTER);
+        weeklyBarChart.setPreferredSize(new Dimension(0, 160));
+        weeklySection.add(weeklyBarChart, BorderLayout.CENTER);
+
+        JPanel recentSection = new JPanel(new BorderLayout());
+        recentSection.setOpaque(false);
+        JLabel recentTitle = new JLabel("Recently Played");
+        recentTitle.setForeground(CREAM);
+        recentTitle.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        recentSection.add(recentTitle, BorderLayout.NORTH);
+        JTable recentStatsTable = new JTable(recentPlaysTableModel);
+        styleTable(recentStatsTable);
+        JScrollPane recentScroll = new JScrollPane(recentStatsTable);
+        recentScroll.setPreferredSize(new Dimension(0, 140));
+        styleScrollPane(recentScroll);
+        recentSection.add(recentScroll, BorderLayout.CENTER);
+
+        JPanel lowerSection = new JPanel(new GridLayout(2, 1, 0, 10));
+        lowerSection.setOpaque(false);
+        lowerSection.add(weeklySection);
+        lowerSection.add(recentSection);
 
         JPanel center = new JPanel(new BorderLayout(10, 10));
         center.setOpaque(false);
         center.add(cards, BorderLayout.NORTH);
         center.add(lists, BorderLayout.CENTER);
-        center.add(weeklySection, BorderLayout.SOUTH);
+        center.add(lowerSection, BorderLayout.SOUTH);
 
         JScrollPane mainScroll = new JScrollPane(center);
         styleScrollPane(mainScroll);
@@ -921,135 +1039,29 @@ public class VibeVaultFrame extends JFrame {
         JLabel songsTitle = new JLabel("Songs");
         songsTitle.setForeground(CREAM);
         songsTitle.setFont(new Font("Segoe UI", Font.BOLD, 20));
+
         RoundedButton addSongsButton = createPrimaryButton("Add Songs");
-        addSongsButton.setPreferredSize(new Dimension(130, 34));
+        addSongsButton.setPreferredSize(new Dimension(110, 34));
         addSongsButton.addActionListener(e -> showAddSongsDialog());
+
+        RoundedButton scanButton = createSecondaryButton("Scan");
+        scanButton.setPreferredSize(new Dimension(80, 34));
+        scanButton.addActionListener(e -> showScanDialog());
+
         styleInputField(librarySearchField);
         applyPlaceholder(librarySearchField, "Search your library...");
         librarySearchField.setPreferredSize(new Dimension(260, 34));
+
         JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         headerActions.setOpaque(false);
         headerActions.add(addSongsButton);
+        headerActions.add(scanButton);
         headerActions.add(librarySearchField);
         libraryHeader.add(songsTitle, BorderLayout.WEST);
         libraryHeader.add(headerActions, BorderLayout.EAST);
-
-        JPanel playlistActions = new JPanel(new GridLayout(0, 1, 8, 8));
-        playlistActions.setBackground(DEEP_NAVY);
-        playlistActions.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(STEEL_BLUE), "Playlist Actions", 0, 0, null, CREAM));
-        RoundedButton createPlaylistButton = createPrimaryButton("Create Playlist");
-        RoundedButton addSongToPlaylistButton = createSecondaryButton("Add Selected Library Song");
-        RoundedButton loadPlaylistButton = createSecondaryButton("Load Selected Playlist to Queue");
-        createPlaylistButton.setAlignmentX(CENTER_ALIGNMENT);
-        addSongToPlaylistButton.setAlignmentX(CENTER_ALIGNMENT);
-        loadPlaylistButton.setAlignmentX(CENTER_ALIGNMENT);
-        
-        createPlaylistButton.addActionListener(e -> createPlaylist());
-        addSongToPlaylistButton.addActionListener(e -> addSelectedLibrarySongToSelectedPlaylist());
-        loadPlaylistButton.addActionListener(e -> loadSelectedPlaylistToQueue());
-        playlistActions.add(createLabel("Playlist Name"));
-        playlistActions.add(playlistNameField);
-        playlistActions.add(createPlaylistButton);
-        playlistActions.add(addSongToPlaylistButton);
-        playlistActions.add(loadPlaylistButton);
-
-        JPanel leftColumn = new JPanel();
-        leftColumn.setBackground(DEEP_NAVY);
-        leftColumn.setLayout(new BoxLayout(leftColumn, BoxLayout.Y_AXIS));
-        leftColumn.add(playlistActions);
-        summaryLabel.setForeground(CREAM);
-        leftColumn.add(Box.createVerticalGlue());
-        leftColumn.add(summaryLabel);
-
-        JScrollPane leftScroll = new JScrollPane(leftColumn);
-        leftScroll.setPreferredSize(new Dimension(300, 0));
-        leftScroll.setBorder(null);
-        styleScrollPane(leftScroll);
-
         JScrollPane libraryPane = new JScrollPane(libraryTable);
-        libraryPane.setBorder(BorderFactory.createTitledBorder("My Library"));
-        JScrollPane playlistsPane = new JScrollPane(playlistsTable);
-        playlistsPane.setBorder(BorderFactory.createTitledBorder("My Playlists"));
-        JScrollPane playlistSongsPane = new JScrollPane(playlistSongsTable);
-        playlistSongsPane.setBorder(BorderFactory.createTitledBorder("Selected Playlist Songs"));
         styleScrollPane(libraryPane);
-        styleScrollPane(playlistsPane);
-        styleScrollPane(playlistSongsPane);
-
-        JSplitPane playlistsSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, playlistsPane, playlistSongsPane);
-        playlistsSplit.setResizeWeight(0.45);
-        playlistsSplit.setDividerSize(3);
-        playlistsSplit.setBackground(DEEP_NAVY);
-        playlistsSplit.setBorder(null);
-
-        JSplitPane mainCenterSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, libraryPane, playlistsSplit);
-        mainCenterSplit.setResizeWeight(0.62);
-        mainCenterSplit.setDividerSize(3);
-        mainCenterSplit.setBackground(DEEP_NAVY);
-        mainCenterSplit.setBorder(null);
-
-        JPanel playerControls = new JPanel(new GridLayout(0, 2, 8, 8));
-        playerControls.setBorder(BorderFactory.createTitledBorder("Player Controls"));
-        RoundedButton previousButton = createIconButton("Previous");
-        RoundedButton nextButton = createIconButton("Next");
-        RoundedButton playSelectedQueueButton = createSecondaryButton("Play Selected Queue Row");
-        RoundedButton moveQueueUpButton = createSecondaryButton("Move Queue Row Up");
-        RoundedButton moveQueueDownButton = createSecondaryButton("Move Queue Row Down");
-        RoundedButton removeQueueRowButton = createSecondaryButton("Remove Queue Row");
-        RoundedButton logPlaybackButton = createPrimaryButton("Log Playback Seconds");
-        previousButton.addActionListener(e -> playPrevious());
-        nextButton.addActionListener(e -> playNext());
-        playSelectedQueueButton.addActionListener(e -> playSelectedQueueRow());
-        moveQueueUpButton.addActionListener(e -> moveSelectedQueueRow(-1));
-        moveQueueDownButton.addActionListener(e -> moveSelectedQueueRow(1));
-        removeQueueRowButton.addActionListener(e -> removeSelectedQueueRow());
-        logPlaybackButton.addActionListener(e -> logPlayback());
-        shuffleButton.addActionListener(e -> toggleShuffle());
-        repeatModeCombo.addActionListener(e -> updateRepeatMode());
-        listenedSecondsField.setText("30");
-
-        playerControls.add(previousButton);
-        playerControls.add(nextButton);
-        playerControls.add(playSelectedQueueButton);
-        playerControls.add(moveQueueUpButton);
-        playerControls.add(moveQueueDownButton);
-        playerControls.add(removeQueueRowButton);
-        playerControls.add(shuffleButton);
-        playerControls.add(new JLabel("Repeat Mode"));
-        playerControls.add(repeatModeCombo);
-        playerControls.add(new JLabel("Listened Seconds"));
-        playerControls.add(listenedSecondsField);
-        playerControls.add(logPlaybackButton);
-        playerControls.add(nowPlayingLabel);
-
-        JScrollPane queuePane = new JScrollPane(queueTable);
-        queuePane.setBorder(BorderFactory.createTitledBorder("Playback Queue"));
-        styleScrollPane(queuePane);
-
-        JPanel statsPanel = new JPanel(new GridLayout(2, 2, 8, 8));
-        statsPanel.setBorder(BorderFactory.createTitledBorder("Stats Dashboard"));
-        JScrollPane topSongsPane = new JScrollPane(topSongsTable);
-        topSongsPane.setBorder(BorderFactory.createTitledBorder("Top Songs"));
-        JScrollPane topArtistsPane = new JScrollPane(topArtistsTable);
-        topArtistsPane.setBorder(BorderFactory.createTitledBorder("Top Artists"));
-        JScrollPane weeklyPane = new JScrollPane(weeklyActivityTable);
-        weeklyPane.setBorder(BorderFactory.createTitledBorder("Weekly Activity"));
-        JScrollPane recentPane = new JScrollPane(recentPlaysTable);
-        recentPane.setBorder(BorderFactory.createTitledBorder("Recently Played"));
-        styleScrollPane(topSongsPane);
-        styleScrollPane(topArtistsPane);
-        styleScrollPane(weeklyPane);
-        styleScrollPane(recentPane);
-        statsPanel.add(topSongsPane);
-        statsPanel.add(topArtistsPane);
-        statsPanel.add(weeklyPane);
-        statsPanel.add(recentPane);
-
-        JPanel bottomPanel = new JPanel(new BorderLayout(8, 8));
-        bottomPanel.setOpaque(false);
-        bottomPanel.add(statsPanel, BorderLayout.WEST);
-        bottomPanel.add(queuePane, BorderLayout.CENTER);
-        bottomPanel.add(playerControls, BorderLayout.EAST);
+        libraryPane.setBorder(null);
 
         playlistsTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
@@ -1058,9 +1070,7 @@ public class VibeVaultFrame extends JFrame {
         });
 
         panel.add(libraryHeader, BorderLayout.NORTH);
-        panel.add(leftScroll, BorderLayout.WEST);
-        panel.add(mainCenterSplit, BorderLayout.CENTER);
-        panel.add(bottomPanel, BorderLayout.SOUTH);
+        panel.add(libraryPane, BorderLayout.CENTER);
         return panel;
     }
 
@@ -1141,13 +1151,132 @@ public class VibeVaultFrame extends JFrame {
     private void openDashboard(User user) {
         welcomeLabel.setText("Welcome, " + user.getUsername());
         playerService.setActiveUserId(user.getUserId());
-        repeatModeCombo.setSelectedItem(PlayerService.RepeatMode.OFF);
         playerService.setRepeatMode(PlayerService.RepeatMode.OFF);
+        repeatButton.setText("🔁");
         contentCardLayout.show(contentCardPanel, CONTENT_LIBRARY);
+
+        // Step 7: Dead file cleanup on login
+        int removed = libraryScanService.validateAndCleanLibrary(user.getUserId());
+        if (removed > 0) {
+            showToast(removed + " missing files removed from library.");
+        }
+
         refreshLibraryAndStats(user.getUserId());
         refreshPlaylists(user.getUserId());
         refreshQueueTable();
         cardLayout.show(rootPanel, CARD_DASHBOARD);
+    }
+
+    private void showScanDialog() {
+        User currentUser = requireCurrentUser();
+        JDialog dialog = new JDialog(this, "Library Auto-Scan", true);
+        dialog.setSize(500, 400);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout(10, 10));
+
+        JPanel root = new JPanel(new BorderLayout(10, 10));
+        root.setBackground(DEEP_NAVY);
+        root.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
+
+        JLabel title = new JLabel("Watched Folders");
+        title.setForeground(CREAM);
+        title.setFont(new Font("Segoe UI", Font.BOLD, 18));
+
+        DefaultListModel<String> folderModel = new DefaultListModel<>();
+        folderModel.addAll(libraryScanService.getWatchedFolders(currentUser.getUserId()));
+        JList<String> folderList = new JList<>(folderModel);
+        folderList.setBackground(ABYSS);
+        folderList.setForeground(CREAM);
+        JScrollPane scroll = new JScrollPane(folderList);
+        styleScrollPane(scroll);
+
+        RoundedButton addButton = createSecondaryButton("+ Add Folder");
+        RoundedButton removeButton = createSecondaryButton("- Remove");
+        RoundedButton scanNowButton = createPrimaryButton("Scan Now");
+
+        addButton.addActionListener(e -> {
+            FileDialog chooser = new FileDialog(this, "Select Folder to Watch", FileDialog.LOAD);
+            System.setProperty("apple.awt.fileDialogForDirectories", "true");
+            chooser.setVisible(true);
+            String dir = chooser.getDirectory();
+            String file = chooser.getFile();
+            System.setProperty("apple.awt.fileDialogForDirectories", "false");
+            if (dir != null) {
+                File folder = new File(dir, file != null ? file : "");
+                if (folder.exists() && folder.isDirectory()) {
+                    String path = folder.getAbsolutePath();
+                    libraryScanService.addWatchedFolder(currentUser.getUserId(), path);
+                    folderModel.clear();
+                    folderModel.addAll(libraryScanService.getWatchedFolders(currentUser.getUserId()));
+                }
+            }
+        });
+
+        removeButton.addActionListener(e -> {
+            String selected = folderList.getSelectedValue();
+            if (selected != null) {
+                libraryScanService.removeWatchedFolder(currentUser.getUserId(), selected);
+                folderModel.removeElement(selected);
+            }
+        });
+
+        JProgressBar progress = new JProgressBar();
+        progress.setVisible(false);
+        progress.setBackground(ABYSS);
+        progress.setForeground(STEEL_BLUE);
+        progress.setStringPainted(true);
+
+        scanNowButton.addActionListener(e -> {
+            if (folderModel.isEmpty()) {
+                showError("Add at least one folder to scan");
+                return;
+            }
+            scanNowButton.setEnabled(false);
+            progress.setVisible(true);
+            SwingWorker<LibraryScanService.ScanResult, Integer> worker = new SwingWorker<>() {
+                @Override
+                protected LibraryScanService.ScanResult doInBackground() {
+                    return libraryScanService.scanWatchedFolders(currentUser.getUserId(), (cur, total) -> {
+                        progress.setMaximum(total);
+                        publish(cur);
+                    });
+                }
+                @Override
+                protected void process(List<Integer> chunks) {
+                    progress.setValue(chunks.get(chunks.size() - 1));
+                }
+                @Override
+                protected void done() {
+                    try {
+                        LibraryScanService.ScanResult res = get();
+                        refreshLibraryAndStats(currentUser.getUserId());
+                        showToast(res.toSummaryString());
+                        dialog.dispose();
+                    } catch (Exception ex) {
+                        showError("Scan failed: " + ex.getMessage());
+                        scanNowButton.setEnabled(true);
+                    }
+                }
+            };
+            worker.execute();
+        });
+
+        JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        btns.setOpaque(false);
+        btns.add(addButton);
+        btns.add(removeButton);
+        btns.add(scanNowButton);
+
+        root.add(title, BorderLayout.NORTH);
+        root.add(scroll, BorderLayout.CENTER);
+        JPanel bottom = new JPanel(new BorderLayout());
+        bottom.setOpaque(false);
+        bottom.add(progress, BorderLayout.NORTH);
+        bottom.add(btns, BorderLayout.SOUTH);
+        root.add(bottom, BorderLayout.SOUTH);
+
+        dialog.setContentPane(root);
+        dialog.setVisible(true);
     }
 
     private void importSong() {
@@ -1503,37 +1632,48 @@ public class VibeVaultFrame extends JFrame {
         }).start();
     }
 
-    private void updateRepeatMode() {
-        PlayerService.RepeatMode selected = (PlayerService.RepeatMode) repeatModeCombo.getSelectedItem();
-        if (selected != null) {
-            playerService.setRepeatMode(selected);
-        }
-    }
-
-    private void logPlayback() {
-        User currentUser = requireCurrentUser();
-        try {
-            int listenedSeconds = Integer.parseInt(listenedSecondsField.getText().trim());
-            playerService.logCurrentSongPlayback(currentUser.getUserId(), listenedSeconds);
-            refreshLibraryAndStats(currentUser.getUserId());
-        } catch (NumberFormatException ex) {
-            showError("Listened seconds must be a valid number");
-        } catch (RuntimeException ex) {
-            showError(ex.getMessage());
-        }
+    private void cycleRepeatMode() {
+        PlayerService.RepeatMode current = playerService.getRepeatMode();
+        PlayerService.RepeatMode next = switch (current) {
+            case OFF -> PlayerService.RepeatMode.ONE;
+            case ONE -> PlayerService.RepeatMode.ALL;
+            case ALL -> PlayerService.RepeatMode.OFF;
+        };
+        playerService.setRepeatMode(next);
+        repeatButton.setText(switch (next) {
+            case OFF -> "🔁";
+            case ONE -> "🔂";
+            case ALL -> "🔁●";
+        });
     }
 
     private void refreshLibraryAndStats(int userId) {
         List<Song> songs = libraryService.getUserLibrarySongs(userId);
+        artistNameCache.clear();
+        albumTitleCache.clear();
+        librarySongIds.clear();
+        List<LibraryService.ArtistLibrarySummary> artistSummaries = libraryService.getArtistBrowseSummaries(userId);
+        artistNameCache.putAll(artistSummaries.stream().collect(Collectors.toMap(
+                LibraryService.ArtistLibrarySummary::artistId,
+                LibraryService.ArtistLibrarySummary::artistName
+        )));
+        for (LibraryService.ArtistLibrarySummary artist : artistSummaries) {
+            for (LibraryService.AlbumLibrarySummary album : libraryService.getAlbumBrowseSummaries(userId, artist.artistId())) {
+                albumTitleCache.put(album.albumId(), album.albumTitle());
+            }
+        }
+
         libraryTableModel.setRowCount(0);
+        int rowNum = 1;
         for (Song song : songs) {
+            librarySongIds.add(song.getSongId());
             libraryTableModel.addRow(new Object[]{
-                    song.getSongId(),
+                    rowNum++,
                     song.getTitle(),
-                    song.getArtistId(),
-                    song.getAlbumId(),
-                    song.getGenre(),
-                    song.getFilePath()
+                    lookupArtistName(song.getArtistId()),
+                    lookupAlbumTitle(song.getAlbumId()),
+                    song.getGenre() != null ? song.getGenre() : "",
+                    formatDuration(song.getDurationSeconds())
             });
         }
 
@@ -1575,9 +1715,11 @@ public class VibeVaultFrame extends JFrame {
         }
 
         weeklyActivityTableModel.setRowCount(0);
-        for (StatsService.DailyListeningStat stat : statsService.getWeeklyActivity(userId)) {
+        List<StatsService.DailyListeningStat> weeklyStats = statsService.getWeeklyActivity(userId);
+        for (StatsService.DailyListeningStat stat : weeklyStats) {
             weeklyActivityTableModel.addRow(new Object[]{stat.day(), stat.totalMinutes()});
         }
+        weeklyBarChart.setData(weeklyStats);
 
         recentPlaysTableModel.setRowCount(0);
         for (StatsService.RecentPlay play : statsService.getRecentlyPlayed(userId, 10)) {
@@ -1617,11 +1759,15 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private void updateNowPlayingLabel() {
-        String nowPlaying = playerService.getCurrentSong()
-                .map(song -> song.getTitle() + " (" + song.getFilePath() + ")")
-                .orElse("-");
-        nowPlayingLabel.setText("Now playing: " + nowPlaying);
-        playButton.setText(playerService.isPlaying() ? "⏸" : "▶");
+        playerService.getCurrentSong().ifPresentOrElse(song -> {
+            String artistName = lookupArtistName(song.getArtistId());
+            nowPlayingLabel.setText("<html><b>" + escapeHtml(song.getTitle()) + "</b><br/>" +
+                    "<span style='color:#A2A89A;font-size:10px;'>" + escapeHtml(artistName) + "</span></html>");
+            playButton.setText(playerService.isPlaying() ? "⏸" : "▶");
+        }, () -> {
+            nowPlayingLabel.setText("<html><span style='color:#A2A89A;'>Nothing playing</span></html>");
+            playButton.setText("▶");
+        });
     }
 
     private Integer getSelectedPlaylistId() {
@@ -1638,7 +1784,10 @@ public class VibeVaultFrame extends JFrame {
             return null;
         }
         int modelRow = libraryTable.convertRowIndexToModel(row);
-        return Integer.parseInt(libraryTableModel.getValueAt(modelRow, 0).toString());
+        if (modelRow < 0 || modelRow >= librarySongIds.size()) {
+            return null;
+        }
+        return librarySongIds.get(modelRow);
     }
 
     private User requireCurrentUser() {
@@ -1652,6 +1801,35 @@ public class VibeVaultFrame extends JFrame {
         albumField.setText("");
         genreField.setText("");
         sourceField.setText("");
+    }
+
+    private String formatDuration(Integer totalSeconds) {
+        if (totalSeconds == null || totalSeconds <= 0) {
+            return "--:--";
+        }
+        int minutes = totalSeconds / 60;
+        int seconds = totalSeconds % 60;
+        return String.format("%d:%02d", minutes, seconds);
+    }
+
+    private String lookupArtistName(int artistId) {
+        return artistNameCache.getOrDefault(artistId, "Unknown Artist");
+    }
+
+    private String lookupAlbumTitle(Integer albumId) {
+        if (albumId == null) {
+            return "";
+        }
+        return albumTitleCache.getOrDefault(albumId, "Unknown Album");
+    }
+
+    private String escapeHtml(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 
     private void styleInputField(JTextField field) {
@@ -1783,12 +1961,73 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private void applyLibrarySearchFilter() {
-        String query = librarySearchField.getText() == null ? "" : librarySearchField.getText().trim();
+        String query = readTextInput(librarySearchField).trim();
         if (query.isEmpty()) {
             librarySorter.setRowFilter(null);
             return;
         }
-        librarySorter.setRowFilter(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(query), 1, 2, 4, 5));
+        librarySorter.setRowFilter(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(query), 1, 2, 3, 4, 5));
+    }
+
+    private void configureBrowseScreenInteractions() {
+        browseSongsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1) {
+                    playSelectedBrowseSong();
+                }
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                maybeShowBrowseSongsPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                maybeShowBrowseSongsPopup(e);
+            }
+        });
+    }
+
+    private Integer getSelectedBrowseSongId() {
+        int row = browseSongsTable.getSelectedRow();
+        if (row < 0) {
+            return null;
+        }
+        if (row < 0 || row >= browseSongIds.size()) {
+            return null;
+        }
+        return browseSongIds.get(row);
+    }
+
+    private void playSelectedBrowseSong() {
+        Integer songId = getSelectedBrowseSongId();
+        if (songId == null) {
+            return;
+        }
+        playSongFromLibrary(songId);
+    }
+
+    private void maybeShowBrowseSongsPopup(MouseEvent e) {
+        if (!e.isPopupTrigger()) {
+            return;
+        }
+        int row = browseSongsTable.rowAtPoint(e.getPoint());
+        if (row < 0) {
+            return;
+        }
+        browseSongsTable.setRowSelectionInterval(row, row);
+        Integer songId = getSelectedBrowseSongId();
+        if (songId == null) {
+            return;
+        }
+
+        JPopupMenu popupMenu = new JPopupMenu();
+        JMenuItem playItem = new JMenuItem("Play");
+        playItem.addActionListener(evt -> playSongFromLibrary(songId));
+        popupMenu.add(playItem);
+        popupMenu.show(e.getComponent(), e.getX(), e.getY());
     }
 
     private void maybeShowLibraryPopup(MouseEvent e) {
@@ -1868,6 +2107,211 @@ public class VibeVaultFrame extends JFrame {
         JOptionPane.showMessageDialog(this, message, "Error", JOptionPane.ERROR_MESSAGE);
     }
 
+    private void showCreatePlaylistDialog() {
+        User currentUser = requireCurrentUser();
+        String name = JOptionPane.showInputDialog(this, "Playlist name:");
+        if (name == null || name.isBlank()) {
+            return;
+        }
+        try {
+            playlistService.createPlaylist(currentUser.getUserId(), name.trim());
+            refreshPlaylists(currentUser.getUserId());
+        } catch (RuntimeException ex) {
+            showError(ex.getMessage());
+        }
+    }
+
+    private void showAddSongsToPlaylistDialog(Integer playlistId) {
+        if (playlistId == null) {
+            showError("Select a playlist first");
+            return;
+        }
+        User currentUser = requireCurrentUser();
+        List<Song> songs = libraryService.getUserLibrarySongs(currentUser.getUserId());
+        if (songs.isEmpty()) {
+            showError("No songs in library");
+            return;
+        }
+
+        DefaultTableModel model = new DefaultTableModel(new Object[]{"Title", "Artist", "Album", "Duration"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+        List<Integer> songIds = new ArrayList<>();
+        for (Song song : songs) {
+            songIds.add(song.getSongId());
+            model.addRow(new Object[]{
+                    song.getTitle(),
+                    lookupArtistName(song.getArtistId()),
+                    lookupAlbumTitle(song.getAlbumId()),
+                    formatDuration(song.getDurationSeconds())
+            });
+        }
+
+        JTable table = new JTable(model);
+        styleTable(table);
+        table.setSelectionMode(javax.swing.ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        JScrollPane scrollPane = new JScrollPane(table);
+        styleScrollPane(scrollPane);
+        scrollPane.setPreferredSize(new Dimension(650, 340));
+
+        int choice = JOptionPane.showConfirmDialog(
+                this,
+                scrollPane,
+                "Add Songs to Playlist",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+        );
+        if (choice != JOptionPane.OK_OPTION) {
+            return;
+        }
+
+        int[] selectedRows = table.getSelectedRows();
+        if (selectedRows.length == 0) {
+            return;
+        }
+        for (int selectedRow : selectedRows) {
+            playlistService.addSong(playlistId, songIds.get(selectedRow));
+        }
+        refreshPlaylistScreenDetail();
+    }
+
+    private void playCurrentBrowseSongs() {
+        if (currentBrowseSongs == null || currentBrowseSongs.isEmpty()) {
+            return;
+        }
+        playerService.setQueue(currentBrowseSongs);
+        playerService.playAt(0);
+        refreshQueueTable();
+        updateNowPlayingLabel();
+    }
+
+    private void styleAllTables() {
+        styleTable(libraryTable);
+        styleTable(playlistsTable);
+        styleTable(playlistSongsTable);
+        styleTable(queueTable);
+        styleTable(topSongsTable);
+        styleTable(topArtistsTable);
+        styleTable(weeklyActivityTable);
+        styleTable(recentPlaysTable);
+        styleTable(browseSongsTable);
+        styleTable(playlistScreenListTable);
+        styleTable(playlistScreenSongsTable);
+
+        // Step 10: Hide raw ID columns
+        hideColumn(libraryTable, 0); // "#" column often confusing if sorted
+        hideColumn(playlistsTable, 0);
+        hideColumn(playlistSongsTable, 0);
+        hideColumn(queueTable, 0);
+        hideColumn(queueTable, 1);
+        hideColumn(playlistScreenListTable, 0);
+        hideColumn(playlistScreenSongsModel, playlistScreenSongsTable, 1);
+    }
+
+    private void hideColumn(JTable table, int columnIndex) {
+        table.getColumnModel().getColumn(columnIndex).setMinWidth(0);
+        table.getColumnModel().getColumn(columnIndex).setMaxWidth(0);
+        table.getColumnModel().getColumn(columnIndex).setPreferredWidth(0);
+    }
+
+    private void hideColumn(DefaultTableModel model, JTable table, int columnIndex) {
+        hideColumn(table, columnIndex);
+    }
+
+    private void styleTable(JTable table) {
+        table.setBackground(ABYSS);
+        table.setForeground(CREAM);
+        table.setSelectionBackground(STEEL_BLUE);
+        table.setSelectionForeground(CREAM);
+        table.setGridColor(new Color(255, 255, 255, 8));
+        table.setRowHeight(36);
+        table.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        table.getTableHeader().setBackground(DEEP_NAVY);
+        table.getTableHeader().setForeground(new Color(0xEDE8D0));
+        table.getTableHeader().setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        table.setShowHorizontalLines(true);
+        table.setShowVerticalLines(false);
+        table.setIntercellSpacing(new Dimension(0, 1));
+        table.setFillsViewportHeight(true);
+    }
+
+    private static class WeeklyBarChart extends JPanel {
+        private List<StatsService.DailyListeningStat> data = new ArrayList<>();
+
+        public void setData(List<StatsService.DailyListeningStat> data) {
+            this.data = data == null ? List.of() : List.copyOf(data);
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+            int padLeft = 40;
+            int padRight = 16;
+            int padTop = 16;
+            int padBottom = 36;
+            int chartWidth = Math.max(1, w - padLeft - padRight);
+            int chartHeight = Math.max(1, h - padTop - padBottom);
+
+            g2.setColor(DEEP_NAVY);
+            g2.fillRect(0, 0, w, h);
+
+            if (data == null || data.isEmpty()) {
+                g2.setColor(new Color(0xA2A89A));
+                g2.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+                g2.drawString("No data this week", padLeft + 8, padTop + chartHeight / 2);
+                g2.dispose();
+                return;
+            }
+
+            double maxMinutes = data.stream().mapToDouble(StatsService.DailyListeningStat::totalMinutes).max().orElse(1.0);
+            if (maxMinutes <= 0) {
+                maxMinutes = 1.0;
+            }
+
+            int barCount = data.size();
+            int totalGap = chartWidth / 6;
+            int barWidth = Math.max(8, (chartWidth - totalGap) / Math.max(1, barCount));
+            int gap = Math.max(4, totalGap / (barCount + 1));
+            g2.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+
+            for (int i = 0; i < barCount; i++) {
+                StatsService.DailyListeningStat stat = data.get(i);
+                int barHeight = (int) ((stat.totalMinutes() / maxMinutes) * chartHeight);
+                int x = padLeft + gap + i * (barWidth + gap);
+                int y = padTop + chartHeight - barHeight;
+
+                g2.setColor(STEEL_BLUE);
+                g2.fillRoundRect(x, y, barWidth, barHeight, 6, 6);
+
+                String dayLabel = stat.day().length() >= 10 ? stat.day().substring(5) : stat.day();
+                g2.setColor(new Color(0xA2A89A));
+                FontMetrics fm = g2.getFontMetrics();
+                int labelX = x + (barWidth - fm.stringWidth(dayLabel)) / 2;
+                g2.drawString(dayLabel, labelX, padTop + chartHeight + 18);
+
+                if (stat.totalMinutes() > 0) {
+                    String val = stat.totalMinutes() + "m";
+                    int valX = x + (barWidth - fm.stringWidth(val)) / 2;
+                    g2.setColor(CREAM);
+                    g2.drawString(val, valX, y - 4);
+                }
+            }
+
+            g2.setColor(new Color(0xEDE8D0));
+            g2.drawLine(padLeft, padTop + chartHeight, padLeft + chartWidth, padTop + chartHeight);
+            g2.dispose();
+        }
+    }
+
     private static class AlbumBrowseCard {
         private final int albumId;
         private final String albumTitle;
@@ -1885,14 +2329,16 @@ public class VibeVaultFrame extends JFrame {
             LibraryService libraryService,
             PlaylistService playlistService,
             PlayerService playerService,
-            StatsService statsService
+            StatsService statsService,
+            LibraryScanService libraryScanService
     ) {
         SwingUtilities.invokeLater(() -> new VibeVaultFrame(
                 authService,
                 libraryService,
                 playlistService,
                 playerService,
-                statsService
+                statsService,
+                libraryScanService
         ).setVisible(true));
     }
 }

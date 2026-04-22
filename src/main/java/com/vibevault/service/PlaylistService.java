@@ -1,6 +1,7 @@
 package com.vibevault.service;
 
 import com.vibevault.dao.PlaylistDAO;
+import com.vibevault.dao.SongDAO;
 import com.vibevault.db.DatabaseManager;
 import com.vibevault.model.Playlist;
 import com.vibevault.model.Song;
@@ -15,10 +16,12 @@ import java.util.Objects;
 public class PlaylistService {
     private final DatabaseManager databaseManager;
     private final PlaylistDAO playlistDAO;
+    private final SongDAO songDAO;
 
     public PlaylistService(DatabaseManager databaseManager) {
         this.databaseManager = Objects.requireNonNull(databaseManager, "databaseManager must not be null");
         this.playlistDAO = new PlaylistDAO(this.databaseManager);
+        this.songDAO = new SongDAO(this.databaseManager);
     }
 
     public Playlist createPlaylist(int userId, String name) {
@@ -48,6 +51,13 @@ public class PlaylistService {
     }
 
     public void addSong(int playlistId, int songId) {
+        // Step 0: Verify ownership and library
+        Playlist playlist = playlistDAO.findById(playlistId)
+                .orElseThrow(() -> new IllegalArgumentException("Playlist not found"));
+        if (!songDAO.isInUserLibrary(playlist.getUserId(), songId)) {
+            throw new IllegalArgumentException("Song is not in your library");
+        }
+
         String nextPositionSql = "SELECT COALESCE(MAX(position), 0) + 1 AS next_position FROM playlist_songs WHERE playlist_id = ?";
         String insertSql = "INSERT INTO playlist_songs(playlist_id, song_id, position) VALUES(?, ?, ?)";
 

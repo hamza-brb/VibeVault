@@ -350,7 +350,7 @@ public class PlayerService {
     }
 
     public Optional<PlayHistory> logCurrentSongPlayback(int userId, int durationListenedSeconds) {
-        if (durationListenedSeconds <= 10 || !hasCurrentSong()) {
+        if (durationListenedSeconds < 5 || !hasCurrentSong()) {
             return Optional.empty();
         }
         Song currentSong = queue.get(playOrder.get(orderPosition));
@@ -367,9 +367,7 @@ public class PlayerService {
     }
 
     private void validateManualQueueEditAllowed() {
-        if (shuffleEnabled) {
-            throw new IllegalStateException("Disable shuffle before manually editing queue order");
-        }
+        // Shuffle restriction removed to allow queue editing even in shuffle mode
     }
 
     private static int remapMovedIndex(int index, int from, int to) {
@@ -411,6 +409,13 @@ public class PlayerService {
 
         Optional<Path> candidate = resolvePlayablePath(currentSong.getFilePath());
         if (candidate.isEmpty()) {
+            propertyChangeSupport.firePropertyChange(
+                    "playbackError",
+                    null,
+                    "File not found on this device: " + currentSong.getTitle()
+                            + "\nPath: " + currentSong.getFilePath()
+            );
+            playing = false;
             return;
         }
 

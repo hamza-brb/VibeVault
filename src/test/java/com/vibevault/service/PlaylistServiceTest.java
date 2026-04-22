@@ -126,6 +126,10 @@ class PlaylistServiceTest {
         Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), album.getAlbumId(), "Pop", 190, "C:\\music\\song-b-" + UUID.randomUUID() + ".mp3", 2, 2024));
         Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), album.getAlbumId(), "Pop", 200, "C:\\music\\song-c-" + UUID.randomUUID() + ".mp3", 3, 2024));
 
+        songDAO.addToUserLibraryIfMissing(user.getUserId(), songA.getSongId());
+        songDAO.addToUserLibraryIfMissing(user.getUserId(), songB.getSongId());
+        songDAO.addToUserLibraryIfMissing(user.getUserId(), songC.getSongId());
+
         return new SeedData(user, songA, songB, songC);
     }
 
