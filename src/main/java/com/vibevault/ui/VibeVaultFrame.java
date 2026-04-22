@@ -594,7 +594,10 @@ public class VibeVaultFrame extends JFrame {
         JLabel sectionLabel = new JLabel("Library");
         sectionLabel.setForeground(Theme.TEXT_MUTED);
         sectionLabel.setFont(Theme.body(11f).deriveFont(Font.BOLD));
-        sectionLabel.setBorder(BorderFactory.createEmptyBorder(0, 8, 10, 0));
+        sectionLabel.setAlignmentX(CENTER_ALIGNMENT);
+        sectionLabel.setHorizontalAlignment(JLabel.CENTER);
+        sectionLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+        sectionLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
 
         SidebarButton songsButton = createSidebarButton("♫", "Songs", CONTENT_LIBRARY);
         SidebarButton artistsButton = createSidebarButton("◎", "Artists", CONTENT_BROWSE);

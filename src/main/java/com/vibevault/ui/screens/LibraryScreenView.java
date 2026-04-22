@@ -31,28 +31,33 @@ public final class LibraryScreenView {
             Runnable onShowScanDialog,
             Runnable onRefreshSelectedPlaylistSongs
     ) {
-        JPanel panel = new JPanel(new BorderLayout(12, 12));
-        panel.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
+        JPanel panel = new JPanel(new BorderLayout(14, 14));
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
         panel.setBackground(Theme.BG_DEEP);
 
-        JPanel libraryHeader = new JPanel(new BorderLayout(8, 0));
+        RoundedPanel headerSurface = new RoundedPanel(18, Theme.BG_SURFACE);
+        headerSurface.setBorderConfig(Theme.BG_BORDER, 1);
+        headerSurface.setLayout(new BorderLayout(10, 0));
+        headerSurface.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+
+        JPanel libraryHeader = new JPanel(new BorderLayout(10, 0));
         libraryHeader.setOpaque(false);
         JLabel songsTitle = new JLabel("Songs");
         songsTitle.setForeground(Theme.TEXT_PRIMARY);
-        songsTitle.setFont(Theme.heading(22f));
+        songsTitle.setFont(Theme.heading(23f));
         librarySongCountLabel.setForeground(Theme.TEXT_MUTED);
-        librarySongCountLabel.setFont(Theme.body(12f));
+        librarySongCountLabel.setFont(Theme.body(12f).deriveFont(java.awt.Font.BOLD));
         JPanel titlePanel = new JPanel(new GridLayout(0, 1, 0, 2));
         titlePanel.setOpaque(false);
         titlePanel.add(songsTitle);
         titlePanel.add(librarySongCountLabel);
 
         RoundedButton addSongsButton = createPrimaryButton.apply("Add Songs");
-        addSongsButton.setPreferredSize(new Dimension(110, 34));
+        addSongsButton.setPreferredSize(new Dimension(118, 34));
         addSongsButton.addActionListener(e -> onShowAddSongsDialog.run());
 
         RoundedButton scanButton = createSecondaryButton.apply("Scan");
-        scanButton.setPreferredSize(new Dimension(80, 34));
+        scanButton.setPreferredSize(new Dimension(84, 34));
         scanButton.addActionListener(e -> onShowScanDialog.run());
 
         JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
@@ -61,6 +66,7 @@ public final class LibraryScreenView {
         headerActions.add(scanButton);
         libraryHeader.add(titlePanel, BorderLayout.WEST);
         libraryHeader.add(headerActions, BorderLayout.EAST);
+        headerSurface.add(libraryHeader, BorderLayout.CENTER);
 
         JScrollPane libraryPane = new JScrollPane(libraryTable);
         styleScrollPane.accept(libraryPane);
@@ -70,7 +76,7 @@ public final class LibraryScreenView {
         contentSurface.setBorderConfig(Theme.BG_BORDER, 1);
         contentSurface.setLayout(new BorderLayout(12, 12));
         contentSurface.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
-        contentSurface.add(libraryHeader, BorderLayout.NORTH);
+        contentSurface.add(headerSurface, BorderLayout.NORTH);
         contentSurface.add(libraryPane, BorderLayout.CENTER);
 
         playlistsTable.getSelectionModel().addListSelectionListener(e -> {
