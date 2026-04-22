@@ -9,16 +9,23 @@ import com.vibevault.service.LibraryService;
 import com.vibevault.service.PlayerService;
 import com.vibevault.service.PlaylistService;
 import com.vibevault.service.StatsService;
+import com.vibevault.ui.components.AccentSliderUI;
+import com.vibevault.ui.components.CircleAvatarLabel;
 import com.vibevault.ui.components.DarkScrollBarUI;
 import com.vibevault.ui.components.RoundedButton;
+import com.vibevault.ui.components.RoundedBorder;
 import com.vibevault.ui.components.RoundedPanel;
+import com.vibevault.ui.components.SidebarButton;
+import com.vibevault.ui.components.Theme;
 import com.vibevault.ui.components.ThreeDPanel;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.AbstractAction;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
@@ -36,18 +43,21 @@ import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
+import javax.swing.KeyStroke;
 import javax.swing.DefaultListModel;
 import javax.swing.RowFilter;
 import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.ChangeListener;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
+import java.awt.event.ActionEvent;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.FileDialog;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.FontMetrics;
@@ -56,10 +66,12 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.GridLayout;
 import java.io.File;
+import java.awt.Cursor;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -69,11 +81,11 @@ import java.util.stream.Collectors;
 import javax.swing.SwingWorker;
 
 public class VibeVaultFrame extends JFrame {
-    private static final Color ABYSS = new Color(0x0D1321);
-    private static final Color DEEP_NAVY = new Color(0x1A2A3A);
-    private static final Color STEEL_BLUE = new Color(0x2E5077);
-    private static final Color MUTED_BLUE = new Color(0x6B8FA8);
-    private static final Color CREAM = new Color(0xEDE8D0);
+    private static final Color ABYSS = Theme.BG_DEEP;
+    private static final Color DEEP_NAVY = Theme.BG_SURFACE;
+    private static final Color STEEL_BLUE = Theme.BG_BORDER;
+    private static final Color MUTED_BLUE = Theme.ACCENT;
+    private static final Color CREAM = Theme.TEXT_PRIMARY;
 
     private static final String CARD_AUTH = "auth";
     private static final String CARD_DASHBOARD = "dashboard";
@@ -109,10 +121,17 @@ public class VibeVaultFrame extends JFrame {
 
     private final JLabel welcomeLabel = new JLabel("Welcome");
     private final JLabel summaryLabel = new JLabel("No data yet.");
-    private final JLabel nowPlayingLabel = new JLabel("Now playing: -");
+    private final JLabel nowPlayingLabel = new JLabel("Nothing playing");
+    private final JLabel nowPlayingArtistLabel = new JLabel("Choose a song from your library");
+    private final JLabel elapsedTimeLabel = new JLabel("0:00");
+    private final JLabel totalTimeLabel = new JLabel("0:00");
+    private final JLabel librarySongCountLabel = new JLabel("0 songs");
     private final RoundedButton playButton = createIconButton("▶");
     private final RoundedButton repeatButton = createIconButton("🔁");
+    private final RoundedButton shuffleToggle = createIconButton("🔀");
+    private final JSlider seekSlider = new JSlider(0, 1000, 0);
     private final JSlider volumeSlider = new JSlider(0, 100, 70);
+    private final CircleAvatarLabel nowPlayingAvatar = new CircleAvatarLabel("VibeVault");
     private final JLabel statsTotalPlaysValueLabel = new JLabel("0");
     private final JLabel statsListeningValueLabel = new JLabel("0.0 min");
     private final JLabel statsTopArtistValueLabel = new JLabel("N/A");
@@ -229,13 +248,14 @@ public class VibeVaultFrame extends JFrame {
     private final JTable playlistScreenSongsTable = new JTable(playlistScreenSongsModel);
     private final JLabel playlistScreenTitleLabel = new JLabel("Select a playlist");
     private final JLabel playlistScreenMetaLabel = new JLabel("0 songs");
-    private final RoundedButton shuffleButton = new RoundedButton("Shuffle: OFF", 12, DEEP_NAVY, STEEL_BLUE, ABYSS);
     private final WeeklyBarChart weeklyBarChart = new WeeklyBarChart();
+    private final Map<String, SidebarButton> sidebarButtons = new HashMap<>();
     private final Map<Integer, String> artistNameCache = new HashMap<>();
     private final Map<Integer, String> albumTitleCache = new HashMap<>();
-    private final List<Integer> librarySongIds = new ArrayList<>();
     private final List<Integer> browseSongIds = new ArrayList<>();
     private List<Song> currentBrowseSongs = List.of();
+    private final javax.swing.Timer playbackUiTimer;
+    private boolean seekSliderInternalUpdate;
 
     public VibeVaultFrame(
             AuthService authService,
@@ -261,25 +281,44 @@ public class VibeVaultFrame extends JFrame {
         rootPanel.setBackground(ABYSS);
 
         styleAllTables();
-        styleShuffleButton();
+        stylePlaybackControls();
         rootPanel.add(buildAuthPanel(), CARD_AUTH);
         rootPanel.add(buildDashboardPanel(), CARD_DASHBOARD);
         configureLibraryScreenInteractions();
         configureBrowseScreenInteractions();
+        configurePlaylistScreenInteractions();
+        configureKeyboardShortcuts();
+        playbackUiTimer = new javax.swing.Timer(200, e -> updatePlaybackProgressUi());
+        playbackUiTimer.start();
 
-        // Add property change listener for player service
         this.playerService.addPropertyChangeListener(evt -> {
             if ("playing".equals(evt.getPropertyName())) {
                 boolean nowPlaying = (Boolean) evt.getNewValue();
                 boolean wasPlaying = (Boolean) evt.getOldValue();
-                // Song ended naturally (was playing, now stopped, not paused by user)
                 if (wasPlaying && !nowPlaying) {
+                    if (playerService.isNaturallyEnded()) {
+                        SwingUtilities.invokeLater(() -> {
+                            playerService.handleTrackCompletion();
+                            updateNowPlayingLabel();
+                            refreshQueueTable();
+                            libraryTable.repaint();
+                        });
+                    } else {
+                        SwingUtilities.invokeLater(this::updateNowPlayingLabel);
+                    }
+                } else {
                     SwingUtilities.invokeLater(() -> {
-                        playerService.next();   // respects RepeatMode and shuffle
                         updateNowPlayingLabel();
-                        refreshQueueTable();
+                        libraryTable.repaint();
                     });
                 }
+            }
+            if ("currentSong".equals(evt.getPropertyName())) {
+                SwingUtilities.invokeLater(() -> {
+                    updateNowPlayingLabel();
+                    refreshQueueTable();
+                    libraryTable.repaint();
+                });
             }
             if ("playbackError".equals(evt.getPropertyName())) {
                 SwingUtilities.invokeLater(() ->
@@ -290,41 +329,51 @@ public class VibeVaultFrame extends JFrame {
         cardLayout.show(rootPanel, CARD_AUTH);
     }
 
-    private void styleShuffleButton() {
-        shuffleButton.setForeground(CREAM);
-        shuffleButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        shuffleButton.setBorder(BorderFactory.createLineBorder(STEEL_BLUE, 1, true));
-        repeatButton.setForeground(CREAM);
-        repeatButton.setFont(new Font("Segoe UI Symbol", Font.BOLD, 13));
-        repeatButton.setBorder(BorderFactory.createLineBorder(STEEL_BLUE, 1, true));
+    private void stylePlaybackControls() {
+        shuffleToggle.setForeground(Theme.TEXT_PRIMARY);
+        shuffleToggle.setFont(Theme.body(14f));
+        shuffleToggle.setToolTipText("Shuffle");
+        repeatButton.setForeground(Theme.TEXT_PRIMARY);
+        repeatButton.setFont(Theme.body(14f).deriveFont(Font.BOLD));
+        repeatButton.setToolTipText("Repeat");
+        playButton.setFont(Theme.heading(16f));
+        playButton.setPreferredSize(new Dimension(44, 36));
+        playButton.setBackground(Theme.ACCENT_SOFT);
+        seekSlider.setOpaque(false);
+        seekSlider.setBackground(Theme.BG_SURFACE);
+        seekSlider.setForeground(Theme.ACCENT);
+        seekSlider.setUI(new AccentSliderUI(seekSlider, Theme.ACCENT, Theme.BG_BORDER));
         volumeSlider.setOpaque(false);
-        volumeSlider.setBackground(ABYSS);
-        volumeSlider.setForeground(CREAM);
+        volumeSlider.setBackground(Theme.BG_SURFACE);
+        volumeSlider.setForeground(Theme.ACCENT);
+        volumeSlider.setUI(new AccentSliderUI(volumeSlider, Theme.ACCENT, Theme.BG_BORDER));
         volumeSlider.setValue(playerService.getVolumePercent());
     }
 
     private RoundedButton createPrimaryButton(String text) {
-        RoundedButton btn = new RoundedButton(text, 15, STEEL_BLUE, MUTED_BLUE, new Color(0x24415E));
-        btn.setForeground(CREAM);
-        btn.setFont(new Font("Segoe UI Symbol", Font.BOLD, 12));
+        RoundedButton btn = new RoundedButton(text, 16, Theme.ACCENT_SOFT, new Color(0x0F4659), new Color(0x0A3240));
+        btn.setForeground(Theme.TEXT_PRIMARY);
+        btn.setFont(Theme.body(13f).deriveFont(Font.BOLD));
         btn.setMargin(new java.awt.Insets(4, 12, 4, 12));
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return btn;
     }
 
     private RoundedButton createSecondaryButton(String text) {
-        RoundedButton btn = new RoundedButton(text, 15, DEEP_NAVY, STEEL_BLUE, ABYSS);
-        btn.setForeground(CREAM);
-        btn.setFont(new Font("Segoe UI Symbol", Font.PLAIN, 12));
-        btn.setBorder(BorderFactory.createLineBorder(STEEL_BLUE, 1, true));
+        RoundedButton btn = new RoundedButton(text, 16, Theme.BG_SURFACE, Theme.BG_HOVER, Theme.BG_DEEP);
+        btn.setForeground(Theme.TEXT_PRIMARY);
+        btn.setFont(Theme.body(13f));
         btn.setMargin(new java.awt.Insets(4, 12, 4, 12));
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return btn;
     }
 
     private RoundedButton createIconButton(String text) {
-        RoundedButton btn = new RoundedButton(text, 12, ABYSS, DEEP_NAVY, STEEL_BLUE);
-        btn.setForeground(CREAM);
+        RoundedButton btn = new RoundedButton(text, 14, Theme.BG_DEEP, Theme.BG_HOVER, Theme.BG_SURFACE);
+        btn.setForeground(Theme.TEXT_PRIMARY);
         btn.setFont(new Font("Segoe UI Symbol", Font.BOLD, 14));
         btn.setMargin(new java.awt.Insets(0, 0, 0, 0));
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return btn;
     }
 
@@ -433,37 +482,39 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private JPanel buildTopBar() {
-        JPanel topBar = new JPanel(new BorderLayout(10, 0));
-        topBar.setBackground(ABYSS);
-        topBar.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+        JPanel topBar = new JPanel(new BorderLayout(16, 0));
+        topBar.setBackground(Theme.BG_DEEP);
+        topBar.setBorder(BorderFactory.createEmptyBorder(14, 20, 10, 20));
 
-        JPanel leftNav = new JPanel();
+        JPanel leftNav = new JPanel(new GridLayout(0, 1, 0, 2));
         leftNav.setOpaque(false);
-        RoundedButton backBtn = createIconButton("←");
-        RoundedButton forwardBtn = createIconButton("→");
-        backBtn.setPreferredSize(new Dimension(32, 32));
-        forwardBtn.setPreferredSize(new Dimension(32, 32));
-        leftNav.add(backBtn);
-        leftNav.add(forwardBtn);
+        JLabel brandLabel = new JLabel("VibeVault");
+        brandLabel.setForeground(Theme.TEXT_PRIMARY);
+        brandLabel.setFont(Theme.heading(22f));
+        JLabel brandMeta = new JLabel("Deep Space Audio");
+        brandMeta.setForeground(Theme.TEXT_MUTED);
+        brandMeta.setFont(Theme.body(12f));
+        leftNav.add(brandLabel);
+        leftNav.add(brandMeta);
 
         JTextField globalSearch = new JTextField();
         styleInputField(globalSearch);
         applyPlaceholder(globalSearch, "Search your library...");
-        globalSearch.setPreferredSize(new Dimension(400, 32));
+        globalSearch.setPreferredSize(new Dimension(340, 36));
 
         RoundedButton statsButton = createSecondaryButton("Stats");
-        statsButton.setPreferredSize(new Dimension(80, 32));
+        statsButton.setPreferredSize(new Dimension(86, 36));
         statsButton.addActionListener(e -> {
             contentCardLayout.show(contentCardPanel, CONTENT_STATS);
+            setActiveSection(CONTENT_STATS);
             User currentUser = requireCurrentUser();
             refreshLibraryAndStats(currentUser.getUserId());
         });
-        RoundedButton userButton = createSecondaryButton("👤 User ▾");
-        userButton.setFont(new Font("Segoe UI Symbol", Font.PLAIN, 12));
-        userButton.setPreferredSize(new Dimension(120, 32));
+        RoundedButton userButton = createSecondaryButton("Account");
+        userButton.setPreferredSize(new Dimension(110, 36));
         userButton.addActionListener(e -> showUserMenu(userButton));
 
-        JPanel right = new JPanel();
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         right.setOpaque(false);
         right.add(statsButton);
         right.add(userButton);
@@ -476,31 +527,56 @@ public class VibeVaultFrame extends JFrame {
 
     private JPanel buildSidebar() {
         JPanel sidebar = new JPanel();
-        sidebar.setBackground(ABYSS);
+        sidebar.setBackground(Theme.BG_DEEP);
         sidebar.setPreferredSize(new Dimension(240, 0));
         sidebar.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(255, 255, 255, 16)),
-                BorderFactory.createEmptyBorder(14, 10, 14, 10)
+                BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.BG_BORDER),
+                BorderFactory.createEmptyBorder(18, 12, 18, 12)
         ));
         sidebar.setLayout(new BoxLayout(sidebar, BoxLayout.Y_AXIS));
 
-        RoundedButton songsButton = createSidebarButton("☰ Songs");
-        RoundedButton artistsButton = createSidebarButton("👤 Artists");
-        RoundedButton albumsButton = createSidebarButton("💿 Albums");
-        RoundedButton playlistsButton = createSidebarButton("♪ Playlists");
-        RoundedButton statsButton = createSidebarButton("📊 Stats");
+        JLabel sectionLabel = new JLabel("Library");
+        sectionLabel.setForeground(Theme.TEXT_MUTED);
+        sectionLabel.setFont(Theme.body(11f).deriveFont(Font.BOLD));
+        sectionLabel.setBorder(BorderFactory.createEmptyBorder(0, 8, 10, 0));
 
-        songsButton.addActionListener(e -> contentCardLayout.show(contentCardPanel, CONTENT_LIBRARY));
-        artistsButton.addActionListener(e -> showBrowseArtists());
-        albumsButton.addActionListener(e -> showBrowseAlbums());
-        playlistsButton.addActionListener(e -> contentCardLayout.show(contentCardPanel, CONTENT_PLAYLISTS));
-        statsButton.addActionListener(e -> contentCardLayout.show(contentCardPanel, CONTENT_STATS));
+        SidebarButton songsButton = createSidebarButton("♫", "Songs", CONTENT_LIBRARY);
+        SidebarButton artistsButton = createSidebarButton("◎", "Artists", CONTENT_BROWSE);
+        SidebarButton playlistsButton = createSidebarButton("≡", "Playlists", CONTENT_PLAYLISTS);
+        SidebarButton statsButton = createSidebarButton("◫", "Stats", CONTENT_STATS);
 
+        songsButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                contentCardLayout.show(contentCardPanel, CONTENT_LIBRARY);
+                setActiveSection(CONTENT_LIBRARY);
+            }
+        });
+        artistsButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                showBrowseArtists();
+            }
+        });
+        playlistsButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                contentCardLayout.show(contentCardPanel, CONTENT_PLAYLISTS);
+                setActiveSection(CONTENT_PLAYLISTS);
+            }
+        });
+        statsButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                contentCardLayout.show(contentCardPanel, CONTENT_STATS);
+                setActiveSection(CONTENT_STATS);
+            }
+        });
+
+        sidebar.add(sectionLabel);
         sidebar.add(songsButton);
         sidebar.add(Box.createRigidArea(new Dimension(0, 8)));
         sidebar.add(artistsButton);
-        sidebar.add(Box.createRigidArea(new Dimension(0, 8)));
-        sidebar.add(albumsButton);
         sidebar.add(Box.createRigidArea(new Dimension(0, 8)));
         sidebar.add(playlistsButton);
         sidebar.add(Box.createRigidArea(new Dimension(0, 8)));
@@ -509,29 +585,64 @@ public class VibeVaultFrame extends JFrame {
         return sidebar;
     }
 
-    private RoundedButton createSidebarButton(String text) {
-        RoundedButton btn = createSecondaryButton(text);
+    private SidebarButton createSidebarButton(String icon, String text, String section) {
+        SidebarButton btn = new SidebarButton(icon, text, false);
         btn.setAlignmentX(CENTER_ALIGNMENT);
-        btn.setMaximumSize(new Dimension(220, 40));
-        btn.setPreferredSize(new Dimension(220, 40));
-        btn.setHorizontalAlignment(JButton.LEFT);
+        sidebarButtons.put(section, btn);
         return btn;
     }
 
+    private void setActiveSection(String section) {
+        sidebarButtons.forEach((key, button) -> button.setActive(key.equals(section)));
+    }
+
     private JPanel buildNowPlayingBar() {
-        JPanel bar = new JPanel(new BorderLayout(12, 0));
-        bar.setBackground(ABYSS);
-        bar.setPreferredSize(new Dimension(0, 90));
+        JPanel bar = new JPanel(new BorderLayout(18, 0));
+        bar.setBackground(Theme.BG_SURFACE);
+        bar.setPreferredSize(new Dimension(0, 104));
         bar.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(255, 255, 255, 16)),
-                BorderFactory.createEmptyBorder(10, 12, 10, 12)
+                BorderFactory.createMatteBorder(1, 0, 0, 0, Theme.BG_BORDER),
+                BorderFactory.createEmptyBorder(12, 18, 12, 18)
         ));
 
-        JPanel centerControls = new JPanel(new GridLayout(1, 4, 8, 0));
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+        leftPanel.setOpaque(false);
+        nowPlayingAvatar.setPreferredSize(new Dimension(48, 48));
+        JPanel songMetaPanel = new JPanel();
+        songMetaPanel.setOpaque(false);
+        songMetaPanel.setLayout(new BoxLayout(songMetaPanel, BoxLayout.Y_AXIS));
+        nowPlayingLabel.setForeground(Theme.TEXT_PRIMARY);
+        nowPlayingLabel.setFont(Theme.body(14f).deriveFont(Font.BOLD));
+        nowPlayingArtistLabel.setForeground(Theme.TEXT_MUTED);
+        nowPlayingArtistLabel.setFont(Theme.body(12f));
+        songMetaPanel.add(nowPlayingLabel);
+        songMetaPanel.add(Box.createVerticalStrut(4));
+        songMetaPanel.add(nowPlayingArtistLabel);
+        leftPanel.add(nowPlayingAvatar);
+        leftPanel.add(songMetaPanel);
+
+        JPanel centerPanel = new JPanel();
+        centerPanel.setOpaque(false);
+        centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
+
+        JPanel seekRow = new JPanel(new BorderLayout(8, 0));
+        seekRow.setOpaque(false);
+        elapsedTimeLabel.setForeground(Theme.TEXT_MUTED);
+        elapsedTimeLabel.setFont(Theme.body(11f));
+        totalTimeLabel.setForeground(Theme.TEXT_MUTED);
+        totalTimeLabel.setFont(Theme.body(11f));
+        seekRow.add(elapsedTimeLabel, BorderLayout.WEST);
+        seekRow.add(seekSlider, BorderLayout.CENTER);
+        seekRow.add(totalTimeLabel, BorderLayout.EAST);
+
+        JPanel centerControls = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
         centerControls.setOpaque(false);
         RoundedButton previousButton = createIconButton("⏮");
         RoundedButton nextButton = createIconButton("⏭");
-        RoundedButton shuffleToggle = createIconButton("🔀");
+        previousButton.setPreferredSize(new Dimension(40, 34));
+        nextButton.setPreferredSize(new Dimension(40, 34));
+        shuffleToggle.setPreferredSize(new Dimension(40, 34));
+        repeatButton.setPreferredSize(new Dimension(40, 34));
         previousButton.addActionListener(e -> playPrevious());
         playButton.addActionListener(e -> {
             if (playerService.isPlaying()) {
@@ -549,24 +660,43 @@ public class VibeVaultFrame extends JFrame {
         centerControls.add(shuffleToggle);
         centerControls.add(repeatButton);
         repeatButton.addActionListener(e -> cycleRepeatMode());
+        centerPanel.add(seekRow);
+        centerPanel.add(Box.createVerticalStrut(8));
+        centerPanel.add(centerControls);
+
+        ChangeListener seekListener = e -> {
+            if (seekSliderInternalUpdate || seekSlider.getValueIsAdjusting()) {
+                return;
+            }
+            Song current = playerService.getCurrentSong().orElse(null);
+            if (current == null || current.getDurationSeconds() == null || current.getDurationSeconds() <= 0) {
+                return;
+            }
+            int targetSecond = (int) Math.round(seekSlider.getValue() / 1000.0 * current.getDurationSeconds());
+            playerService.seekToSecond(Math.min(targetSecond, current.getDurationSeconds()));
+            updateNowPlayingLabel();
+        };
+        seekSlider.addChangeListener(seekListener);
 
         volumeSlider.addChangeListener(e -> playerService.setVolumePercent(volumeSlider.getValue()));
+        JPanel rightControls = new JPanel(new BorderLayout(8, 4));
+        rightControls.setOpaque(false);
+
         JPanel volumePanel = new JPanel(new BorderLayout(4, 0));
         volumePanel.setOpaque(false);
-        JLabel volumeLabel = new JLabel("Vol");
-        volumeLabel.setForeground(CREAM);
-        volumeLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        JLabel volumeLabel = new JLabel("Volume");
+        volumeLabel.setForeground(Theme.TEXT_MUTED);
+        volumeLabel.setFont(Theme.body(12f));
         volumePanel.add(volumeLabel, BorderLayout.WEST);
         volumePanel.add(volumeSlider, BorderLayout.CENTER);
+        summaryLabel.setForeground(Theme.TEXT_SUBTLE);
+        summaryLabel.setFont(Theme.body(12f));
+        rightControls.add(summaryLabel, BorderLayout.NORTH);
+        rightControls.add(volumePanel, BorderLayout.SOUTH);
 
-        nowPlayingLabel.setForeground(CREAM);
-        nowPlayingLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        nowPlayingLabel.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
-        nowPlayingLabel.setPreferredSize(new Dimension(320, 70));
-
-        bar.add(nowPlayingLabel, BorderLayout.WEST);
-        bar.add(centerControls, BorderLayout.CENTER);
-        bar.add(volumePanel, BorderLayout.EAST);
+        bar.add(leftPanel, BorderLayout.WEST);
+        bar.add(centerPanel, BorderLayout.CENTER);
+        bar.add(rightControls, BorderLayout.EAST);
         return bar;
     }
 
@@ -646,6 +776,7 @@ public class VibeVaultFrame extends JFrame {
         browseHeaderLabel.setText("Artists");
         refreshBrowseGrid();
         contentCardLayout.show(contentCardPanel, CONTENT_BROWSE);
+        setActiveSection(CONTENT_BROWSE);
         browseCardLayout.show(browseCardPanel, BROWSE_GRID);
     }
 
@@ -654,6 +785,7 @@ public class VibeVaultFrame extends JFrame {
         browseHeaderLabel.setText("Albums");
         refreshBrowseGrid();
         contentCardLayout.show(contentCardPanel, CONTENT_BROWSE);
+        setActiveSection(CONTENT_BROWSE);
         browseCardLayout.show(browseCardPanel, BROWSE_GRID);
     }
 
@@ -1032,14 +1164,20 @@ public class VibeVaultFrame extends JFrame {
 
     private JPanel buildLibraryWorkspacePanel() {
         JPanel panel = new JPanel(new BorderLayout(12, 12));
-        panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-        panel.setBackground(DEEP_NAVY);
+        panel.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
+        panel.setBackground(Theme.BG_DEEP);
 
         JPanel libraryHeader = new JPanel(new BorderLayout(8, 0));
         libraryHeader.setOpaque(false);
         JLabel songsTitle = new JLabel("Songs");
-        songsTitle.setForeground(CREAM);
-        songsTitle.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        songsTitle.setForeground(Theme.TEXT_PRIMARY);
+        songsTitle.setFont(Theme.heading(22f));
+        librarySongCountLabel.setForeground(Theme.TEXT_MUTED);
+        librarySongCountLabel.setFont(Theme.body(12f));
+        JPanel titlePanel = new JPanel(new GridLayout(0, 1, 0, 2));
+        titlePanel.setOpaque(false);
+        titlePanel.add(songsTitle);
+        titlePanel.add(librarySongCountLabel);
 
         RoundedButton addSongsButton = createPrimaryButton("Add Songs");
         addSongsButton.setPreferredSize(new Dimension(110, 34));
@@ -1058,11 +1196,18 @@ public class VibeVaultFrame extends JFrame {
         headerActions.add(addSongsButton);
         headerActions.add(scanButton);
         headerActions.add(librarySearchField);
-        libraryHeader.add(songsTitle, BorderLayout.WEST);
+        libraryHeader.add(titlePanel, BorderLayout.WEST);
         libraryHeader.add(headerActions, BorderLayout.EAST);
         JScrollPane libraryPane = new JScrollPane(libraryTable);
         styleScrollPane(libraryPane);
         libraryPane.setBorder(null);
+
+        RoundedPanel contentSurface = new RoundedPanel(28, Theme.BG_SURFACE);
+        contentSurface.setBorderConfig(Theme.BG_BORDER, 1);
+        contentSurface.setLayout(new BorderLayout(12, 12));
+        contentSurface.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
+        contentSurface.add(libraryHeader, BorderLayout.NORTH);
+        contentSurface.add(libraryPane, BorderLayout.CENTER);
 
         playlistsTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
@@ -1070,8 +1215,7 @@ public class VibeVaultFrame extends JFrame {
             }
         });
 
-        panel.add(libraryHeader, BorderLayout.NORTH);
-        panel.add(libraryPane, BorderLayout.CENTER);
+        panel.add(contentSurface, BorderLayout.CENTER);
         return panel;
     }
 
@@ -1144,8 +1288,13 @@ public class VibeVaultFrame extends JFrame {
         weeklyActivityTableModel.setRowCount(0);
         recentPlaysTableModel.setRowCount(0);
         summaryLabel.setText("No data yet.");
-        nowPlayingLabel.setText("Now playing: -");
+        nowPlayingLabel.setText("Nothing playing");
+        nowPlayingArtistLabel.setText("Choose a song from your library");
+        elapsedTimeLabel.setText("0:00");
+        totalTimeLabel.setText("0:00");
+        librarySongCountLabel.setText("0 songs");
         playerService.clearQueue();
+        setActiveSection(CONTENT_LIBRARY);
         cardLayout.show(rootPanel, CARD_AUTH);
     }
 
@@ -1153,7 +1302,10 @@ public class VibeVaultFrame extends JFrame {
         welcomeLabel.setText("Welcome, " + user.getUsername());
         playerService.setActiveUserId(user.getUserId());
         playerService.setRepeatMode(PlayerService.RepeatMode.OFF);
+        playerService.setShuffleEnabled(false);
         repeatButton.setText("🔁");
+        syncShuffleButtonState();
+        setActiveSection(CONTENT_LIBRARY);
         contentCardLayout.show(contentCardPanel, CONTENT_LIBRARY);
 
         // Step 7: Dead file cleanup on login
@@ -1199,14 +1351,19 @@ public class VibeVaultFrame extends JFrame {
             JFileChooser chooser = new JFileChooser();
             chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
             chooser.setDialogTitle("Select Folder to Watch");
-            int result = chooser.showOpenDialog(this);
+            chooser.setAcceptAllFileFilterUsed(false);
+            int result = chooser.showOpenDialog(dialog);
             if (result == JFileChooser.APPROVE_OPTION) {
                 File folder = chooser.getSelectedFile();
                 if (folder.exists() && folder.isDirectory()) {
                     String path = folder.getAbsolutePath();
-                    libraryScanService.addWatchedFolder(currentUser.getUserId(), path);
-                    folderModel.clear();
-                    folderModel.addAll(libraryScanService.getWatchedFolders(currentUser.getUserId()));
+                    try {
+                        libraryScanService.addWatchedFolder(currentUser.getUserId(), path);
+                        folderModel.clear();
+                        folderModel.addAll(libraryScanService.getWatchedFolders(currentUser.getUserId()));
+                    } catch (IllegalArgumentException ex) {
+                        showError(ex.getMessage());
+                    }
                 }
             }
         });
@@ -1578,21 +1735,24 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private void playPrevious() {
-        playerService.previous();
-        updateNowPlayingLabel();
+        if (playerService.previous().isPresent() && !playerService.isPlaying()) {
+            playerService.play();
+        }
+        SwingUtilities.invokeLater(this::updateNowPlayingLabel);
     }
 
     private void playNext() {
-        playerService.next();
-        updateNowPlayingLabel();
+        if (playerService.next().isPresent() && !playerService.isPlaying()) {
+            playerService.play();
+        }
+        SwingUtilities.invokeLater(this::updateNowPlayingLabel);
     }
 
     private void toggleShuffle() {
         boolean enabled = !playerService.isShuffleEnabled();
         playerService.setShuffleEnabled(enabled);
-        String status = enabled ? "Shuffle: Enabled" : "Shuffle: Disabled";
-        shuffleButton.setText("Shuffle: " + (enabled ? "ON" : "OFF"));
-        showToast(status);
+        syncShuffleButtonState();
+        showToast("Shuffle: " + (enabled ? "ON" : "OFF"));
     }
 
     private void showToast(String message) {
@@ -1649,7 +1809,6 @@ public class VibeVaultFrame extends JFrame {
         List<Song> songs = libraryService.getUserLibrarySongs(userId);
         artistNameCache.clear();
         albumTitleCache.clear();
-        librarySongIds.clear();
         List<LibraryService.ArtistLibrarySummary> artistSummaries = libraryService.getArtistBrowseSummaries(userId);
         artistNameCache.putAll(artistSummaries.stream().collect(Collectors.toMap(
                 LibraryService.ArtistLibrarySummary::artistId,
@@ -1662,11 +1821,9 @@ public class VibeVaultFrame extends JFrame {
         }
 
         libraryTableModel.setRowCount(0);
-        int rowNum = 1;
         for (Song song : songs) {
-            librarySongIds.add(song.getSongId());
             libraryTableModel.addRow(new Object[]{
-                    rowNum++,
+                    song.getSongId(),
                     song.getTitle(),
                     lookupArtistName(song.getArtistId()),
                     lookupAlbumTitle(song.getAlbumId()),
@@ -1674,6 +1831,7 @@ public class VibeVaultFrame extends JFrame {
                     formatDuration(song.getDurationSeconds())
             });
         }
+        librarySongCountLabel.setText(songs.size() + " songs");
 
         double totalMinutes = statsService.getTotalListeningMinutes(userId);
         String topSong = statsService.getTopSongs(userId, 1).stream()
@@ -1757,13 +1915,17 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private void updateNowPlayingLabel() {
+        ensureArtistCacheLoaded();
         playerService.getCurrentSong().ifPresentOrElse(song -> {
             String artistName = lookupArtistName(song.getArtistId());
-            nowPlayingLabel.setText("<html><b>" + escapeHtml(song.getTitle()) + "</b><br/>" +
-                    "<span style='color:#A2A89A;font-size:10px;'>" + escapeHtml(artistName) + "</span></html>");
+            nowPlayingLabel.setText(song.getTitle());
+            nowPlayingArtistLabel.setText(artistName);
+            nowPlayingAvatar.setSeedText(artistName.isBlank() ? song.getTitle() : artistName);
             playButton.setText(playerService.isPlaying() ? "⏸" : "▶");
         }, () -> {
-            nowPlayingLabel.setText("<html><span style='color:#A2A89A;'>Nothing playing</span></html>");
+            nowPlayingLabel.setText("Nothing playing");
+            nowPlayingArtistLabel.setText("Choose a song from your library");
+            nowPlayingAvatar.setSeedText("VibeVault");
             playButton.setText("▶");
         });
     }
@@ -1782,10 +1944,11 @@ public class VibeVaultFrame extends JFrame {
             return null;
         }
         int modelRow = libraryTable.convertRowIndexToModel(row);
-        if (modelRow < 0 || modelRow >= librarySongIds.size()) {
+        if (modelRow < 0) {
             return null;
         }
-        return librarySongIds.get(modelRow);
+        Object value = libraryTableModel.getValueAt(modelRow, 0);
+        return value instanceof Integer ? (Integer) value : Integer.parseInt(value.toString());
     }
 
     private User requireCurrentUser() {
@@ -1814,6 +1977,16 @@ public class VibeVaultFrame extends JFrame {
         return artistNameCache.getOrDefault(artistId, "Unknown Artist");
     }
 
+    private void ensureArtistCacheLoaded() {
+        if (!artistNameCache.isEmpty()) {
+            return;
+        }
+        authService.getCurrentUser().ifPresent(user ->
+                libraryService.getArtistBrowseSummaries(user.getUserId())
+                        .forEach(artist -> artistNameCache.put(artist.artistId(), artist.artistName()))
+        );
+    }
+
     private String lookupAlbumTitle(Integer albumId) {
         if (albumId == null) {
             return "";
@@ -1831,12 +2004,12 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private void styleInputField(JTextField field) {
-        field.setBackground(DEEP_NAVY);
-        field.setForeground(CREAM);
-        field.setCaretColor(MUTED_BLUE);
-        field.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        field.setBackground(Theme.BG_SURFACE);
+        field.setForeground(Theme.TEXT_PRIMARY);
+        field.setCaretColor(Theme.ACCENT);
+        field.setFont(Theme.body(13f));
         field.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(STEEL_BLUE, 1, true),
+                new RoundedBorder(Theme.BG_BORDER, 16, 1),
                 BorderFactory.createEmptyBorder(8, 12, 8, 12)
         ));
     }
@@ -1882,7 +2055,7 @@ public class VibeVaultFrame extends JFrame {
             return;
         }
         field.setText(placeholder);
-        field.setForeground(new Color(0xA2A89A));
+        field.setForeground(Theme.TEXT_MUTED);
         field.putClientProperty("placeholder-active", true);
         if (field instanceof JPasswordField passwordField) {
             passwordField.setEchoChar((char) 0);
@@ -1911,8 +2084,9 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private void styleScrollPane(JScrollPane scrollPane) {
-        scrollPane.getViewport().setBackground(ABYSS);
-        scrollPane.setBackground(ABYSS);
+        scrollPane.getViewport().setBackground(Theme.BG_SURFACE);
+        scrollPane.setBackground(Theme.BG_SURFACE);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
         DarkScrollBarUI.apply(scrollPane.getVerticalScrollBar());
     }
 
@@ -1988,6 +2162,53 @@ public class VibeVaultFrame extends JFrame {
         });
     }
 
+    private void configurePlaylistScreenInteractions() {
+        playlistScreenSongsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1) {
+                    playSelectedPlaylistScreenSong();
+                }
+            }
+        });
+    }
+
+    private void configureKeyboardShortcuts() {
+        JComponent target = getRootPane();
+        target.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "toggle-playback");
+        target.getActionMap().put("toggle-playback", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (getFocusOwner() instanceof JTextField) {
+                    return;
+                }
+                if (playerService.isPlaying()) {
+                    playerService.pause();
+                } else {
+                    playerService.play();
+                }
+                updateNowPlayingLabel();
+            }
+        });
+        bindShortcut("queue-next", KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, KeyEvent.CTRL_DOWN_MASK), this::playNext);
+        bindShortcut("queue-prev", KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, KeyEvent.CTRL_DOWN_MASK), this::playPrevious);
+        bindShortcut("toggle-shuffle", KeyStroke.getKeyStroke(KeyEvent.VK_S, KeyEvent.CTRL_DOWN_MASK), this::toggleShuffle);
+        bindShortcut("focus-library-search", KeyStroke.getKeyStroke(KeyEvent.VK_F, KeyEvent.CTRL_DOWN_MASK),
+                () -> librarySearchField.requestFocusInWindow());
+    }
+
+    private void bindShortcut(String actionKey, KeyStroke keyStroke, Runnable action) {
+        JComponent target = getRootPane();
+        target.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(keyStroke, actionKey);
+        target.getActionMap().put(actionKey, new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                action.run();
+            }
+        });
+    }
+
     private Integer getSelectedBrowseSongId() {
         int row = browseSongsTable.getSelectedRow();
         if (row < 0) {
@@ -2005,6 +2226,25 @@ public class VibeVaultFrame extends JFrame {
             return;
         }
         playSongFromLibrary(songId);
+    }
+
+    private void playSelectedPlaylistScreenSong() {
+        Integer playlistId = getSelectedPlaylistScreenId();
+        int row = playlistScreenSongsTable.getSelectedRow();
+        if (playlistId == null || row < 0) {
+            return;
+        }
+
+        int songId = Integer.parseInt(playlistScreenSongsModel.getValueAt(row, 1).toString());
+        List<Song> songs = playlistService.getPlaylistSongs(playlistId);
+        playerService.setQueue(songs);
+        int queueIndex = IntStream.range(0, songs.size())
+                .filter(i -> songs.get(i).getSongId() == songId)
+                .findFirst()
+                .orElse(0);
+        playerService.playAt(queueIndex);
+        refreshQueueTable();
+        updateNowPlayingLabel();
     }
 
     private void maybeShowBrowseSongsPopup(MouseEvent e) {
@@ -2220,20 +2460,76 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private void styleTable(JTable table) {
-        table.setBackground(ABYSS);
-        table.setForeground(CREAM);
-        table.setSelectionBackground(STEEL_BLUE);
-        table.setSelectionForeground(CREAM);
-        table.setGridColor(new Color(255, 255, 255, 8));
-        table.setRowHeight(36);
-        table.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        table.getTableHeader().setBackground(DEEP_NAVY);
-        table.getTableHeader().setForeground(new Color(0xEDE8D0));
-        table.getTableHeader().setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        table.setShowHorizontalLines(true);
+        table.setBackground(Theme.BG_DEEP);
+        table.setForeground(Theme.TEXT_PRIMARY);
+        table.setSelectionBackground(Theme.BG_HOVER);
+        table.setSelectionForeground(Theme.TEXT_PRIMARY);
+        table.setGridColor(new Color(255, 255, 255, 6));
+        table.setRowHeight(40);
+        table.setFont(Theme.body(13f));
+        table.getTableHeader().setBackground(Theme.BG_SURFACE);
+        table.getTableHeader().setForeground(Theme.TEXT_MUTED);
+        table.getTableHeader().setFont(Theme.body(11f).deriveFont(Font.BOLD));
+        table.setShowHorizontalLines(false);
         table.setShowVerticalLines(false);
-        table.setIntercellSpacing(new Dimension(0, 1));
+        table.setIntercellSpacing(new Dimension(0, 0));
         table.setFillsViewportHeight(true);
+        if (table == libraryTable) {
+            table.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+                @Override
+                public java.awt.Component getTableCellRendererComponent(
+                        JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column
+                ) {
+                    JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                    label.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
+                    int modelRow = table.convertRowIndexToModel(row);
+                    Object songIdValue = libraryTableModel.getValueAt(modelRow, 0);
+                    Integer currentSongId = playerService.getCurrentSong().map(Song::getSongId).orElse(null);
+                    boolean isCurrentSong = currentSongId != null && currentSongId.equals(songIdValue);
+                    if (isSelected) {
+                        label.setBackground(Theme.BG_HOVER);
+                        label.setForeground(Theme.TEXT_PRIMARY);
+                        label.setFont(Theme.body(13f));
+                    } else if (isCurrentSong) {
+                        label.setBackground(Theme.ACCENT_SOFT);
+                        label.setForeground(Theme.ACCENT);
+                        label.setFont(Theme.body(13f).deriveFont(Font.BOLD));
+                    } else {
+                        label.setBackground(row % 2 == 0 ? Theme.BG_DEEP : Theme.BG_SURFACE);
+                        label.setForeground(Theme.TEXT_PRIMARY);
+                        label.setFont(Theme.body(13f));
+                    }
+                    return label;
+                }
+            });
+        }
+    }
+
+    private void syncShuffleButtonState() {
+        boolean enabled = playerService.isShuffleEnabled();
+        shuffleToggle.setForeground(enabled ? Theme.ACCENT : Theme.TEXT_PRIMARY);
+        shuffleToggle.setText(enabled ? "⇌" : "🔀");
+    }
+
+    private void updatePlaybackProgressUi() {
+        if (seekSlider.getValueIsAdjusting()) {
+            return;
+        }
+        Song current = playerService.getCurrentSong().orElse(null);
+        int currentSecond = 0;
+        int durationSeconds = 0;
+        int nextValue = 0;
+        if (current != null && current.getDurationSeconds() != null && current.getDurationSeconds() > 0) {
+            currentSecond = playerService.getCurrentSecond();
+            durationSeconds = current.getDurationSeconds();
+            nextValue = (int) Math.min(1000,
+                    Math.round(currentSecond * 1000.0 / durationSeconds));
+        }
+        seekSliderInternalUpdate = true;
+        seekSlider.setValue(nextValue);
+        seekSliderInternalUpdate = false;
+        elapsedTimeLabel.setText(formatDuration(currentSecond));
+        totalTimeLabel.setText(formatDuration(durationSeconds));
     }
 
     private static class WeeklyBarChart extends JPanel {

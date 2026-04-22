@@ -1,5 +1,6 @@
 package com.vibevault;
 
+import com.formdev.flatlaf.FlatDarkLaf;
 import com.vibevault.dao.UserDAO;
 import com.vibevault.db.DatabaseManager;
 import com.vibevault.service.AuthService;
@@ -36,7 +37,7 @@ public class Main {
 
     private static void applyThemeDefaults() {
         try {
-            UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+            FlatDarkLaf.setup();
         } catch (Exception e) {
             throw new IllegalStateException("Failed to initialize look and feel", e);
         }

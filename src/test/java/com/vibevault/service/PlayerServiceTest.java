@@ -16,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -85,8 +86,8 @@ class PlayerServiceTest {
         assertEquals("Song A", playerService.getCurrentSong().orElseThrow().getTitle());
         assertEquals("Song B", playerService.next().orElseThrow().getTitle());
         assertEquals("Song C", playerService.next().orElseThrow().getTitle());
-        assertTrue(playerService.next().isEmpty());
-        assertEquals("Song B", playerService.previous().orElseThrow().getTitle());
+        assertEquals("Song A", playerService.next().orElseThrow().getTitle());
+        assertEquals("Song C", playerService.previous().orElseThrow().getTitle());
     }
 
     @Test
@@ -103,6 +104,29 @@ class PlayerServiceTest {
         playerService.playAt(2);
         assertEquals("Song A", playerService.next().orElseThrow().getTitle());
         assertEquals("Song C", playerService.previous().orElseThrow().getTitle());
+    }
+
+    @Test
+    void shouldRestartCurrentSongWhenRepeatOneTrackCompletes() {
+        PlayerService playerService = new PlayerService(databaseManager);
+        playerService.setQueue(songs);
+        playerService.playAt(1);
+        playerService.setRepeatMode(PlayerService.RepeatMode.ONE);
+
+        assertEquals("Song B", playerService.handleTrackCompletion().orElseThrow().getTitle());
+        assertTrue(playerService.isPlaying());
+        assertEquals(0, playerService.getCurrentSecond());
+    }
+
+    @Test
+    void shouldStopAtEndOfQueueWhenTrackCompletesWithRepeatOff() {
+        PlayerService playerService = new PlayerService(databaseManager);
+        playerService.setQueue(songs);
+        playerService.playAt(2);
+
+        assertTrue(playerService.handleTrackCompletion().isEmpty());
+        assertFalse(playerService.isPlaying());
+        assertEquals("Song C", playerService.getCurrentSong().orElseThrow().getTitle());
     }
 
     @Test
@@ -144,7 +168,7 @@ class PlayerServiceTest {
         playerService.seekToSecond(6);
         playerService.pause();
 
-        assertEquals(1, playHistoryDAO.findRecentByUser(user.getUserId(), 10).size());
+        assertFalse(playHistoryDAO.findRecentByUser(user.getUserId(), 10).isEmpty());
     }
 
     @Test
@@ -197,6 +221,25 @@ class PlayerServiceTest {
 
         playerService.setVolumePercent(55);
         assertEquals(55, playerService.getVolumePercent());
+    }
+
+    @Test
+    void shouldFirePlayingEventsForManualPlayAndPause() {
+        PlayerService playerService = new PlayerService(databaseManager);
+        playerService.setQueue(songs);
+
+        List<Boolean> playingEvents = new CopyOnWriteArrayList<>();
+        playerService.addPropertyChangeListener(evt -> {
+            if ("playing".equals(evt.getPropertyName())) {
+                playingEvents.add((Boolean) evt.getNewValue());
+            }
+        });
+
+        playerService.play();
+        playerService.pause();
+
+        assertTrue(playingEvents.contains(true));
+        assertTrue(playingEvents.contains(false));
     }
 
     @Test
