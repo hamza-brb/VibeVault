@@ -93,6 +93,7 @@ public class VibeVaultFrame extends JFrame {
     private static final String CONTENT_BROWSE = "content-browse";
     private static final String CONTENT_PLAYLISTS = "content-playlists";
     private static final String CONTENT_STATS = "content-stats";
+    private static final String CONTENT_SEARCH = "content-search";
     private static final String BROWSE_GRID = "browse-grid";
     private static final String BROWSE_DETAIL = "browse-detail";
 
@@ -138,14 +139,13 @@ public class VibeVaultFrame extends JFrame {
 
     private final JTextField titleField = new JTextField();
     private final JTextField artistField = new JTextField();
-    private final JTextField albumField = new JTextField();
-    private final JTextField genreField = new JTextField();
     private final JTextField sourceField = new JTextField();
+    private final JTextField globalSearchField = new JTextField();
     private final JTextField librarySearchField = new JTextField();
     private final JTextField playlistNameField = new JTextField();
 
     private final DefaultTableModel libraryTableModel = new DefaultTableModel(
-            new Object[]{"#", "Title", "Artist", "Album", "Genre", "Duration"}, 0
+            new Object[]{"#", "Title", "Artist", "Duration"}, 0
     ) {
         @Override
         public boolean isCellEditable(int row, int column) {
@@ -218,12 +218,39 @@ public class VibeVaultFrame extends JFrame {
     private final JTable weeklyActivityTable = new JTable(weeklyActivityTableModel);
     private final JTable recentPlaysTable = new JTable(recentPlaysTableModel);
     private final TableRowSorter<DefaultTableModel> librarySorter = new TableRowSorter<>(libraryTableModel);
-    private final JPanel browseGridPanel = new JPanel(new GridLayout(0, 4, 12, 12));
+    private final DefaultTableModel searchSongsTableModel = new DefaultTableModel(
+            new Object[]{"Song ID", "Title", "Artist", "Duration"}, 0
+    ) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+    private final DefaultTableModel searchArtistsTableModel = new DefaultTableModel(
+            new Object[]{"Artist ID", "Artist", "Songs"}, 0
+    ) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+    private final DefaultTableModel searchPlaylistsTableModel = new DefaultTableModel(
+            new Object[]{"Playlist ID", "Playlist", "Songs"}, 0
+    ) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+    private final JTable searchSongsTable = new JTable(searchSongsTableModel);
+    private final JTable searchArtistsTable = new JTable(searchArtistsTableModel);
+    private final JTable searchPlaylistsTable = new JTable(searchPlaylistsTableModel);
+    private final JLabel searchResultsLabel = new JLabel("Search results");
+    private final JPanel browseGridPanel = new JPanel(new GridLayout(0, 5, 10, 10));
     private final JLabel browseHeaderLabel = new JLabel("Artists");
     private final JLabel browseDetailLabel = new JLabel("Detail");
-    private final JPanel browseDetailAlbumsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
     private final DefaultTableModel browseSongsTableModel = new DefaultTableModel(
-            new Object[]{"#", "Title", "Artist", "Album", "Duration"}, 0
+            new Object[]{"#", "Title", "Artist", "Duration"}, 0
     ) {
         @Override
         public boolean isCellEditable(int row, int column) {
@@ -231,7 +258,6 @@ public class VibeVaultFrame extends JFrame {
         }
     };
     private final JTable browseSongsTable = new JTable(browseSongsTableModel);
-    private boolean browseAlbumsMode;
     private final DefaultTableModel playlistScreenListModel = new DefaultTableModel(new Object[]{"Playlist ID", "Name"}, 0) {
         @Override
         public boolean isCellEditable(int row, int column) {
@@ -251,9 +277,10 @@ public class VibeVaultFrame extends JFrame {
     private final WeeklyBarChart weeklyBarChart = new WeeklyBarChart();
     private final Map<String, SidebarButton> sidebarButtons = new HashMap<>();
     private final Map<Integer, String> artistNameCache = new HashMap<>();
-    private final Map<Integer, String> albumTitleCache = new HashMap<>();
     private final List<Integer> browseSongIds = new ArrayList<>();
     private List<Song> currentBrowseSongs = List.of();
+    private String activeContentCard = CONTENT_LIBRARY;
+    private String lastNonSearchContentCard = CONTENT_LIBRARY;
     private final javax.swing.Timer playbackUiTimer;
     private boolean seekSliderInternalUpdate;
 
@@ -273,7 +300,7 @@ public class VibeVaultFrame extends JFrame {
         this.libraryScanService = libraryScanService;
 
         setTitle("VibeVault");
-        setMinimumSize(new Dimension(1000, 650));
+        setMinimumSize(new Dimension(1100, 680));
         setSize(1200, 750);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -287,6 +314,8 @@ public class VibeVaultFrame extends JFrame {
         configureLibraryScreenInteractions();
         configureBrowseScreenInteractions();
         configurePlaylistScreenInteractions();
+        configureSearchScreenInteractions();
+        configureGlobalSearch();
         configureKeyboardShortcuts();
         playbackUiTimer = new javax.swing.Timer(200, e -> updatePlaybackProgressUi());
         playbackUiTimer.start();
@@ -476,6 +505,7 @@ public class VibeVaultFrame extends JFrame {
         contentCardPanel.add(buildBrowsePanel(), CONTENT_BROWSE);
         contentCardPanel.add(buildPlaylistScreenPanel(), CONTENT_PLAYLISTS);
         contentCardPanel.add(buildStatsScreenPanel(), CONTENT_STATS);
+        contentCardPanel.add(buildSearchResultsPanel(), CONTENT_SEARCH);
         shell.add(contentCardPanel, BorderLayout.CENTER);
         shell.add(buildNowPlayingBar(), BorderLayout.SOUTH);
         return shell;
@@ -497,16 +527,16 @@ public class VibeVaultFrame extends JFrame {
         leftNav.add(brandLabel);
         leftNav.add(brandMeta);
 
-        JTextField globalSearch = new JTextField();
-        styleInputField(globalSearch);
-        applyPlaceholder(globalSearch, "Search your library...");
-        globalSearch.setPreferredSize(new Dimension(340, 36));
+        styleInputField(globalSearchField);
+        applyPlaceholder(globalSearchField, "Search songs, artists, and playlists...");
+        globalSearchField.setPreferredSize(new Dimension(340, 36));
+        globalSearchField.setMinimumSize(new Dimension(160, 36));
+        globalSearchField.setMaximumSize(new Dimension(500, 36));
 
         RoundedButton statsButton = createSecondaryButton("Stats");
         statsButton.setPreferredSize(new Dimension(86, 36));
         statsButton.addActionListener(e -> {
-            contentCardLayout.show(contentCardPanel, CONTENT_STATS);
-            setActiveSection(CONTENT_STATS);
+            showContentCard(CONTENT_STATS);
             User currentUser = requireCurrentUser();
             refreshLibraryAndStats(currentUser.getUserId());
         });
@@ -520,7 +550,7 @@ public class VibeVaultFrame extends JFrame {
         right.add(userButton);
 
         topBar.add(leftNav, BorderLayout.WEST);
-        topBar.add(globalSearch, BorderLayout.CENTER);
+        topBar.add(globalSearchField, BorderLayout.CENTER);
         topBar.add(right, BorderLayout.EAST);
         return topBar;
     }
@@ -528,7 +558,7 @@ public class VibeVaultFrame extends JFrame {
     private JPanel buildSidebar() {
         JPanel sidebar = new JPanel();
         sidebar.setBackground(Theme.BG_DEEP);
-        sidebar.setPreferredSize(new Dimension(240, 0));
+        sidebar.setPreferredSize(new Dimension(200, 0));
         sidebar.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.BG_BORDER),
                 BorderFactory.createEmptyBorder(18, 12, 18, 12)
@@ -548,8 +578,7 @@ public class VibeVaultFrame extends JFrame {
         songsButton.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                contentCardLayout.show(contentCardPanel, CONTENT_LIBRARY);
-                setActiveSection(CONTENT_LIBRARY);
+                showContentCard(CONTENT_LIBRARY);
             }
         });
         artistsButton.addMouseListener(new MouseAdapter() {
@@ -561,15 +590,13 @@ public class VibeVaultFrame extends JFrame {
         playlistsButton.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                contentCardLayout.show(contentCardPanel, CONTENT_PLAYLISTS);
-                setActiveSection(CONTENT_PLAYLISTS);
+                showContentCard(CONTENT_PLAYLISTS);
             }
         });
         statsButton.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                contentCardLayout.show(contentCardPanel, CONTENT_STATS);
-                setActiveSection(CONTENT_STATS);
+                showContentCard(CONTENT_STATS);
             }
         });
 
@@ -596,8 +623,17 @@ public class VibeVaultFrame extends JFrame {
         sidebarButtons.forEach((key, button) -> button.setActive(key.equals(section)));
     }
 
+    private void showContentCard(String card) {
+        if (!CONTENT_SEARCH.equals(card)) {
+            activeContentCard = card;
+            lastNonSearchContentCard = card;
+            setActiveSection(card);
+        }
+        contentCardLayout.show(contentCardPanel, card);
+    }
+
     private JPanel buildNowPlayingBar() {
-        JPanel bar = new JPanel(new BorderLayout(18, 0));
+        JPanel bar = new JPanel(new GridLayout(1, 3, 0, 0));
         bar.setBackground(Theme.BG_SURFACE);
         bar.setPreferredSize(new Dimension(0, 104));
         bar.setBorder(BorderFactory.createCompoundBorder(
@@ -624,6 +660,7 @@ public class VibeVaultFrame extends JFrame {
         JPanel centerPanel = new JPanel();
         centerPanel.setOpaque(false);
         centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
+        centerPanel.setAlignmentX(CENTER_ALIGNMENT);
 
         JPanel seekRow = new JPanel(new BorderLayout(8, 0));
         seekRow.setOpaque(false);
@@ -694,9 +731,9 @@ public class VibeVaultFrame extends JFrame {
         rightControls.add(summaryLabel, BorderLayout.NORTH);
         rightControls.add(volumePanel, BorderLayout.SOUTH);
 
-        bar.add(leftPanel, BorderLayout.WEST);
-        bar.add(centerPanel, BorderLayout.CENTER);
-        bar.add(rightControls, BorderLayout.EAST);
+        bar.add(leftPanel);
+        bar.add(centerPanel);
+        bar.add(rightControls);
         return bar;
     }
 
@@ -718,15 +755,13 @@ public class VibeVaultFrame extends JFrame {
         JPanel header = new JPanel(new BorderLayout(10, 0));
         header.setOpaque(false);
         browseHeaderLabel.setForeground(CREAM);
-        browseHeaderLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        RoundedButton artistsToggle = createSecondaryButton("Artists");
-        RoundedButton albumsToggle = createSecondaryButton("Albums");
-        artistsToggle.addActionListener(e -> showBrowseArtists());
-        albumsToggle.addActionListener(e -> showBrowseAlbums());
-        JPanel togglePanel = new JPanel();
+        browseHeaderLabel.setFont(Theme.heading(20f));
+        JPanel togglePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         togglePanel.setOpaque(false);
-        togglePanel.add(artistsToggle);
-        togglePanel.add(albumsToggle);
+        JLabel browseHint = new JLabel("Artists in your library");
+        browseHint.setForeground(Theme.TEXT_MUTED);
+        browseHint.setFont(Theme.body(12f));
+        togglePanel.add(browseHint);
         header.add(browseHeaderLabel, BorderLayout.WEST);
         header.add(togglePanel, BorderLayout.EAST);
 
@@ -749,21 +784,11 @@ public class VibeVaultFrame extends JFrame {
         detailTop.add(browseDetailLabel, BorderLayout.CENTER);
         detailTop.add(playAllButton, BorderLayout.EAST);
 
-        browseDetailAlbumsPanel.setBackground(DEEP_NAVY);
-        JScrollPane albumsStripScroll = new JScrollPane(browseDetailAlbumsPanel);
-        albumsStripScroll.setPreferredSize(new Dimension(0, 90));
-        styleScrollPane(albumsStripScroll);
-
         JScrollPane songsScroll = new JScrollPane(browseSongsTable);
         styleScrollPane(songsScroll);
 
         detail.add(detailTop, BorderLayout.NORTH);
-        JSplitPane detailSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, albumsStripScroll, songsScroll);
-        detailSplit.setResizeWeight(0.25);
-        detailSplit.setDividerSize(4);
-        detailSplit.setBorder(null);
-        detailSplit.setBackground(DEEP_NAVY);
-        detail.add(detailSplit, BorderLayout.CENTER);
+        detail.add(songsScroll, BorderLayout.CENTER);
         browseCardPanel.add(detail, BROWSE_DETAIL);
 
         panel.add(header, BorderLayout.NORTH);
@@ -772,50 +797,27 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private void showBrowseArtists() {
-        browseAlbumsMode = false;
         browseHeaderLabel.setText("Artists");
         refreshBrowseGrid();
-        contentCardLayout.show(contentCardPanel, CONTENT_BROWSE);
-        setActiveSection(CONTENT_BROWSE);
-        browseCardLayout.show(browseCardPanel, BROWSE_GRID);
-    }
-
-    private void showBrowseAlbums() {
-        browseAlbumsMode = true;
-        browseHeaderLabel.setText("Albums");
-        refreshBrowseGrid();
-        contentCardLayout.show(contentCardPanel, CONTENT_BROWSE);
-        setActiveSection(CONTENT_BROWSE);
+        showContentCard(CONTENT_BROWSE);
         browseCardLayout.show(browseCardPanel, BROWSE_GRID);
     }
 
     private void refreshBrowseGrid() {
         browseGridPanel.removeAll();
         User user = requireCurrentUser();
-        if (!browseAlbumsMode) {
-            List<LibraryService.ArtistLibrarySummary> artists = libraryService.getArtistBrowseSummaries(user.getUserId());
-            for (LibraryService.ArtistLibrarySummary artist : artists) {
-                RoundedButton card = new RoundedButton("<html><div style='text-align: center;'><b>" + artist.artistName() + "</b><br/>" + artist.songCount() + " songs</div></html>", 15, DEEP_NAVY, STEEL_BLUE, ABYSS);
-                card.setForeground(CREAM);
-                card.setPreferredSize(new Dimension(160, 120));
-                card.addActionListener(e -> openArtistBrowseDetail(artist.artistId(), artist.artistName()));
-                browseGridPanel.add(card);
-            }
-        } else {
-            List<AlbumBrowseCard> albums = new ArrayList<>();
-            List<LibraryService.ArtistLibrarySummary> artists = libraryService.getArtistBrowseSummaries(user.getUserId());
-            for (LibraryService.ArtistLibrarySummary artist : artists) {
-                for (LibraryService.AlbumLibrarySummary album : libraryService.getAlbumBrowseSummaries(user.getUserId(), artist.artistId())) {
-                    albums.add(new AlbumBrowseCard(album.albumId(), album.albumTitle(), artist.artistName()));
-                }
-            }
-            for (AlbumBrowseCard album : albums) {
-                RoundedButton card = new RoundedButton("<html><div style='text-align: center;'><b>" + album.albumTitle + "</b><br/>" + album.artistName + "</div></html>", 15, DEEP_NAVY, STEEL_BLUE, ABYSS);
-                card.setForeground(CREAM);
-                card.setPreferredSize(new Dimension(160, 120));
-                card.addActionListener(e -> openAlbumBrowseDetail(album.albumId, album.albumTitle, album.artistName));
-                browseGridPanel.add(card);
-            }
+        List<LibraryService.ArtistLibrarySummary> artists = libraryService.getArtistBrowseSummaries(user.getUserId());
+        for (LibraryService.ArtistLibrarySummary artist : artists) {
+            RoundedButton card = new RoundedButton(
+                    "<html><div style='text-align:center;'><b><font size='3'>" + escapeHtml(artist.artistName()) +
+                            "</font></b><br/><span style='font-size:10px;'>" + artist.songCount() + " songs</span></div></html>",
+                    15, DEEP_NAVY, STEEL_BLUE, ABYSS
+            );
+            card.setForeground(CREAM);
+            card.setFont(Theme.body(11f));
+            card.setPreferredSize(new Dimension(100, 100));
+            card.addActionListener(e -> openArtistBrowseDetail(artist.artistId(), artist.artistName()));
+            browseGridPanel.add(card);
         }
         browseGridPanel.revalidate();
         browseGridPanel.repaint();
@@ -824,28 +826,8 @@ public class VibeVaultFrame extends JFrame {
     private void openArtistBrowseDetail(int artistId, String artistName) {
         User user = requireCurrentUser();
         browseDetailLabel.setText(artistName);
-        browseDetailAlbumsPanel.removeAll();
-        List<LibraryService.AlbumLibrarySummary> albums = libraryService.getAlbumBrowseSummaries(user.getUserId(), artistId);
-        for (LibraryService.AlbumLibrarySummary album : albums) {
-            RoundedButton button = createSecondaryButton(album.albumTitle());
-            button.addActionListener(e -> fillBrowseSongsTable(libraryService.getSongsByAlbumInUserLibrary(user.getUserId(), album.albumId())));
-            browseDetailAlbumsPanel.add(button);
-        }
         currentBrowseSongs = libraryService.getSongsByArtistInUserLibrary(user.getUserId(), artistId);
         fillBrowseSongsTable(currentBrowseSongs);
-        browseDetailAlbumsPanel.revalidate();
-        browseDetailAlbumsPanel.repaint();
-        browseCardLayout.show(browseCardPanel, BROWSE_DETAIL);
-    }
-
-    private void openAlbumBrowseDetail(int albumId, String albumTitle, String artistName) {
-        User user = requireCurrentUser();
-        browseDetailLabel.setText(albumTitle + " — " + artistName);
-        browseDetailAlbumsPanel.removeAll();
-        currentBrowseSongs = libraryService.getSongsByAlbumInUserLibrary(user.getUserId(), albumId);
-        fillBrowseSongsTable(currentBrowseSongs);
-        browseDetailAlbumsPanel.revalidate();
-        browseDetailAlbumsPanel.repaint();
         browseCardLayout.show(browseCardPanel, BROWSE_DETAIL);
     }
 
@@ -860,10 +842,47 @@ public class VibeVaultFrame extends JFrame {
                     rowNum++,
                     song.getTitle(),
                     lookupArtistName(song.getArtistId()),
-                    lookupAlbumTitle(song.getAlbumId()),
                     formatDuration(song.getDurationSeconds())
             });
         }
+    }
+
+    private JPanel buildSearchResultsPanel() {
+        JPanel panel = new JPanel(new BorderLayout(12, 12));
+        panel.setBackground(Theme.BG_DEEP);
+        panel.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
+
+        RoundedPanel surface = new RoundedPanel(28, Theme.BG_SURFACE);
+        surface.setBorderConfig(Theme.BG_BORDER, 1);
+        surface.setLayout(new BorderLayout(12, 12));
+        surface.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
+
+        searchResultsLabel.setForeground(Theme.TEXT_PRIMARY);
+        searchResultsLabel.setFont(Theme.heading(20f));
+        surface.add(searchResultsLabel, BorderLayout.NORTH);
+
+        JPanel sections = new JPanel(new GridLayout(3, 1, 0, 12));
+        sections.setOpaque(false);
+        sections.add(buildSearchSection("Songs", searchSongsTable));
+        sections.add(buildSearchSection("Artists", searchArtistsTable));
+        sections.add(buildSearchSection("Playlists", searchPlaylistsTable));
+        surface.add(sections, BorderLayout.CENTER);
+
+        panel.add(surface, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel buildSearchSection(String title, JTable table) {
+        JPanel section = new JPanel(new BorderLayout(0, 8));
+        section.setOpaque(false);
+        JLabel label = new JLabel(title);
+        label.setForeground(Theme.TEXT_MUTED);
+        label.setFont(Theme.body(12f).deriveFont(Font.BOLD));
+        section.add(label, BorderLayout.NORTH);
+        JScrollPane scrollPane = new JScrollPane(table);
+        styleScrollPane(scrollPane);
+        section.add(scrollPane, BorderLayout.CENTER);
+        return section;
     }
 
     private JPanel buildPlaylistScreenPanel() {
@@ -961,6 +980,16 @@ public class VibeVaultFrame extends JFrame {
             playlistScreenListModel.addRow(new Object[]{playlist.getPlaylistId(), playlist.getName()});
         }
         refreshPlaylistScreenDetail();
+    }
+
+    private void selectPlaylistScreenRow(int playlistId) {
+        for (int i = 0; i < playlistScreenListModel.getRowCount(); i++) {
+            if (Integer.parseInt(playlistScreenListModel.getValueAt(i, 0).toString()) == playlistId) {
+                playlistScreenListTable.setRowSelectionInterval(i, i);
+                refreshPlaylistScreenDetail();
+                return;
+            }
+        }
     }
 
     private void refreshPlaylistScreenDetail() {
@@ -1279,6 +1308,9 @@ public class VibeVaultFrame extends JFrame {
         updateAuthMode();
         authErrorLabel.setText(" ");
         resetAuthPlaceholders();
+        globalSearchField.setText("");
+        restorePlaceholderIfEmpty(globalSearchField);
+        clearSearchResults();
         libraryTableModel.setRowCount(0);
         playlistsTableModel.setRowCount(0);
         playlistSongsTableModel.setRowCount(0);
@@ -1305,8 +1337,8 @@ public class VibeVaultFrame extends JFrame {
         playerService.setShuffleEnabled(false);
         repeatButton.setText("🔁");
         syncShuffleButtonState();
-        setActiveSection(CONTENT_LIBRARY);
-        contentCardLayout.show(contentCardPanel, CONTENT_LIBRARY);
+        clearSearchResults();
+        showContentCard(CONTENT_LIBRARY);
 
         // Step 7: Dead file cleanup on login
         int removed = libraryScanService.validateAndCleanLibrary(user.getUserId());
@@ -1439,12 +1471,10 @@ public class VibeVaultFrame extends JFrame {
         User currentUser = requireCurrentUser();
         try {
             libraryService.importSong(currentUser.getUserId(), new LibraryService.SongImportRequest(
-                    titleField.getText(),
-                    artistField.getText(),
-                    albumField.getText(),
-                    genreField.getText(),
+                    readTextInput(titleField),
+                    readTextInput(artistField),
                     null,
-                    sourceField.getText(),
+                    readTextInput(sourceField),
                     null,
                     null
             ));
@@ -1808,17 +1838,11 @@ public class VibeVaultFrame extends JFrame {
     private void refreshLibraryAndStats(int userId) {
         List<Song> songs = libraryService.getUserLibrarySongs(userId);
         artistNameCache.clear();
-        albumTitleCache.clear();
         List<LibraryService.ArtistLibrarySummary> artistSummaries = libraryService.getArtistBrowseSummaries(userId);
         artistNameCache.putAll(artistSummaries.stream().collect(Collectors.toMap(
                 LibraryService.ArtistLibrarySummary::artistId,
                 LibraryService.ArtistLibrarySummary::artistName
         )));
-        for (LibraryService.ArtistLibrarySummary artist : artistSummaries) {
-            for (LibraryService.AlbumLibrarySummary album : libraryService.getAlbumBrowseSummaries(userId, artist.artistId())) {
-                albumTitleCache.put(album.albumId(), album.albumTitle());
-            }
-        }
 
         libraryTableModel.setRowCount(0);
         for (Song song : songs) {
@@ -1826,8 +1850,6 @@ public class VibeVaultFrame extends JFrame {
                     song.getSongId(),
                     song.getTitle(),
                     lookupArtistName(song.getArtistId()),
-                    lookupAlbumTitle(song.getAlbumId()),
-                    song.getGenre() != null ? song.getGenre() : "",
                     formatDuration(song.getDurationSeconds())
             });
         }
@@ -1838,14 +1860,10 @@ public class VibeVaultFrame extends JFrame {
                 .findFirst()
                 .map(StatsService.SongPlayStat::songTitle)
                 .orElse("N/A");
-        String favoriteAlbum = statsService.getFavoriteAlbum(userId)
-                .map(StatsService.AlbumPlayStat::albumTitle)
-                .orElse("N/A");
         summaryLabel.setText(
                 "Songs: " + songs.size() +
                         " | Total listening minutes: " + totalMinutes +
-                        " | Top song: " + topSong +
-                        " | Favorite album: " + favoriteAlbum
+                        " | Top song: " + topSong
         );
 
         refreshStatsTables(userId);
@@ -1959,8 +1977,6 @@ public class VibeVaultFrame extends JFrame {
     private void clearImportFields() {
         titleField.setText("");
         artistField.setText("");
-        albumField.setText("");
-        genreField.setText("");
         sourceField.setText("");
     }
 
@@ -1985,13 +2001,6 @@ public class VibeVaultFrame extends JFrame {
                 libraryService.getArtistBrowseSummaries(user.getUserId())
                         .forEach(artist -> artistNameCache.put(artist.artistId(), artist.artistName()))
         );
-    }
-
-    private String lookupAlbumTitle(Integer albumId) {
-        if (albumId == null) {
-            return "";
-        }
-        return albumTitleCache.getOrDefault(albumId, "Unknown Album");
     }
 
     private String escapeHtml(String text) {
@@ -2090,6 +2099,99 @@ public class VibeVaultFrame extends JFrame {
         DarkScrollBarUI.apply(scrollPane.getVerticalScrollBar());
     }
 
+    private void configureGlobalSearch() {
+        globalSearchField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                applyGlobalSearch();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                applyGlobalSearch();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                applyGlobalSearch();
+            }
+        });
+    }
+
+    private void applyGlobalSearch() {
+        String query = readTextInput(globalSearchField).trim();
+        if (query.isEmpty()) {
+            clearSearchResults();
+            librarySorter.setRowFilter(null);
+            showContentCard(lastNonSearchContentCard);
+            return;
+        }
+
+        lastNonSearchContentCard = CONTENT_SEARCH.equals(activeContentCard) ? lastNonSearchContentCard : activeContentCard;
+        populateSearchResults(query);
+        contentCardLayout.show(contentCardPanel, CONTENT_SEARCH);
+    }
+
+    private void populateSearchResults(String query) {
+        String lowered = query.toLowerCase();
+        searchResultsLabel.setText("Search results for \"" + query + "\"");
+        ensureArtistCacheLoaded();
+
+        List<Song> songs = authService.getCurrentUser()
+                .map(user -> libraryService.getUserLibrarySongs(user.getUserId()))
+                .orElse(List.of());
+        List<Song> matchedSongs = songs.stream()
+                .filter(song -> song.getTitle().toLowerCase().contains(lowered)
+                        || lookupArtistName(song.getArtistId()).toLowerCase().contains(lowered))
+                .toList();
+
+        searchSongsTableModel.setRowCount(0);
+        for (Song song : matchedSongs) {
+            searchSongsTableModel.addRow(new Object[]{
+                    song.getSongId(),
+                    song.getTitle(),
+                    lookupArtistName(song.getArtistId()),
+                    formatDuration(song.getDurationSeconds())
+            });
+        }
+
+        List<LibraryService.ArtistLibrarySummary> artists = authService.getCurrentUser()
+                .map(user -> libraryService.getArtistBrowseSummaries(user.getUserId()))
+                .orElse(List.of());
+        searchArtistsTableModel.setRowCount(0);
+        for (LibraryService.ArtistLibrarySummary artist : artists) {
+            if (artist.artistName().toLowerCase().contains(lowered)) {
+                searchArtistsTableModel.addRow(new Object[]{
+                        artist.artistId(),
+                        artist.artistName(),
+                        artist.songCount()
+                });
+            }
+        }
+
+        List<Playlist> playlists = authService.getCurrentUser()
+                .map(user -> playlistService.getUserPlaylists(user.getUserId()))
+                .orElse(List.of());
+        searchPlaylistsTableModel.setRowCount(0);
+        for (Playlist playlist : playlists) {
+            if (playlist.getName().toLowerCase().contains(lowered)) {
+                int songCount = playlistService.getPlaylistSongs(playlist.getPlaylistId()).size();
+                searchPlaylistsTableModel.addRow(new Object[]{
+                        playlist.getPlaylistId(),
+                        playlist.getName(),
+                        songCount
+                });
+            }
+        }
+    }
+
+    private void clearSearchResults() {
+        searchResultsLabel.setText("Search results");
+        searchSongsTableModel.setRowCount(0);
+        searchArtistsTableModel.setRowCount(0);
+        searchPlaylistsTableModel.setRowCount(0);
+    }
+
     private void configureLibraryScreenInteractions() {
         libraryTable.setRowSorter(librarySorter);
         librarySearchField.getDocument().addDocumentListener(new DocumentListener() {
@@ -2138,7 +2240,7 @@ public class VibeVaultFrame extends JFrame {
             librarySorter.setRowFilter(null);
             return;
         }
-        librarySorter.setRowFilter(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(query), 1, 2, 3, 4, 5));
+        librarySorter.setRowFilter(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(query), 1, 2));
     }
 
     private void configureBrowseScreenInteractions() {
@@ -2168,6 +2270,53 @@ public class VibeVaultFrame extends JFrame {
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1) {
                     playSelectedPlaylistScreenSong();
+                }
+            }
+        });
+    }
+
+    private void configureSearchScreenInteractions() {
+        searchSongsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1) {
+                    int row = searchSongsTable.getSelectedRow();
+                    if (row >= 0) {
+                        int modelRow = searchSongsTable.convertRowIndexToModel(row);
+                        int songId = Integer.parseInt(searchSongsTableModel.getValueAt(modelRow, 0).toString());
+                        playSongFromLibrary(songId);
+                    }
+                }
+            }
+        });
+
+        searchArtistsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1) {
+                    int row = searchArtistsTable.getSelectedRow();
+                    if (row >= 0) {
+                        int modelRow = searchArtistsTable.convertRowIndexToModel(row);
+                        int artistId = Integer.parseInt(searchArtistsTableModel.getValueAt(modelRow, 0).toString());
+                        String artistName = searchArtistsTableModel.getValueAt(modelRow, 1).toString();
+                        showBrowseArtists();
+                        openArtistBrowseDetail(artistId, artistName);
+                    }
+                }
+            }
+        });
+
+        searchPlaylistsTable.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1) {
+                    int row = searchPlaylistsTable.getSelectedRow();
+                    if (row >= 0) {
+                        int modelRow = searchPlaylistsTable.convertRowIndexToModel(row);
+                        int playlistId = Integer.parseInt(searchPlaylistsTableModel.getValueAt(modelRow, 0).toString());
+                        showContentCard(CONTENT_PLAYLISTS);
+                        selectPlaylistScreenRow(playlistId);
+                    }
                 }
             }
         });
@@ -2371,7 +2520,7 @@ public class VibeVaultFrame extends JFrame {
             return;
         }
 
-        DefaultTableModel model = new DefaultTableModel(new Object[]{"Title", "Artist", "Album", "Duration"}, 0) {
+        DefaultTableModel model = new DefaultTableModel(new Object[]{"Title", "Artist", "Duration"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -2383,7 +2532,6 @@ public class VibeVaultFrame extends JFrame {
             model.addRow(new Object[]{
                     song.getTitle(),
                     lookupArtistName(song.getArtistId()),
-                    lookupAlbumTitle(song.getAlbumId()),
                     formatDuration(song.getDurationSeconds())
             });
         }
@@ -2438,6 +2586,9 @@ public class VibeVaultFrame extends JFrame {
         styleTable(browseSongsTable);
         styleTable(playlistScreenListTable);
         styleTable(playlistScreenSongsTable);
+        styleTable(searchSongsTable);
+        styleTable(searchArtistsTable);
+        styleTable(searchPlaylistsTable);
 
         // Step 10: Hide raw ID columns
         hideColumn(libraryTable, 0); // "#" column often confusing if sorted
@@ -2447,6 +2598,9 @@ public class VibeVaultFrame extends JFrame {
         hideColumn(queueTable, 1);
         hideColumn(playlistScreenListTable, 0);
         hideColumn(playlistScreenSongsModel, playlistScreenSongsTable, 1);
+        hideColumn(searchSongsTable, 0);
+        hideColumn(searchArtistsTable, 0);
+        hideColumn(searchPlaylistsTable, 0);
     }
 
     private void hideColumn(JTable table, int columnIndex) {
@@ -2603,18 +2757,6 @@ public class VibeVaultFrame extends JFrame {
             g2.setColor(new Color(0xEDE8D0));
             g2.drawLine(padLeft, padTop + chartHeight, padLeft + chartWidth, padTop + chartHeight);
             g2.dispose();
-        }
-    }
-
-    private static class AlbumBrowseCard {
-        private final int albumId;
-        private final String albumTitle;
-        private final String artistName;
-
-        private AlbumBrowseCard(int albumId, String albumTitle, String artistName) {
-            this.albumId = albumId;
-            this.albumTitle = albumTitle;
-            this.artistName = artistName;
         }
     }
 

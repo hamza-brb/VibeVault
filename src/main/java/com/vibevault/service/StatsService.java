@@ -112,59 +112,6 @@ public class StatsService {
         }
     }
 
-    public List<GenrePlayStat> getListeningByGenre(int userId) {
-        String sql = "SELECT COALESCE(NULLIF(TRIM(s.genre), ''), 'Unknown') AS genre_name, " +
-                "COUNT(ph.play_id) AS play_count, COALESCE(SUM(ph.duration_listened), 0) AS total_seconds " +
-                "FROM play_history ph JOIN songs s ON s.song_id = ph.song_id " +
-                "WHERE ph.user_id = ? GROUP BY genre_name " +
-                "ORDER BY play_count DESC, total_seconds DESC, genre_name ASC";
-
-        List<GenrePlayStat> stats = new ArrayList<>();
-        try (Connection connection = databaseManager.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, userId);
-            try (ResultSet rs = statement.executeQuery()) {
-                while (rs.next()) {
-                    stats.add(new GenrePlayStat(
-                            rs.getString("genre_name"),
-                            rs.getInt("play_count"),
-                            rs.getInt("total_seconds")
-                    ));
-                }
-            }
-            return stats;
-        } catch (SQLException e) {
-            throw new IllegalStateException("Failed to query listening by genre", e);
-        }
-    }
-
-    public Optional<AlbumPlayStat> getFavoriteAlbum(int userId) {
-        String sql = "SELECT a.album_id, a.title, COUNT(ph.play_id) AS play_count, COALESCE(SUM(ph.duration_listened), 0) AS total_seconds " +
-                "FROM play_history ph " +
-                "JOIN songs s ON s.song_id = ph.song_id " +
-                "JOIN albums a ON a.album_id = s.album_id " +
-                "WHERE ph.user_id = ? " +
-                "GROUP BY a.album_id, a.title " +
-                "ORDER BY play_count DESC, total_seconds DESC, a.title ASC LIMIT 1";
-        try (Connection connection = databaseManager.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, userId);
-            try (ResultSet rs = statement.executeQuery()) {
-                if (rs.next()) {
-                    return Optional.of(new AlbumPlayStat(
-                            rs.getInt("album_id"),
-                            rs.getString("title"),
-                            rs.getInt("play_count"),
-                            rs.getInt("total_seconds")
-                    ));
-                }
-                return Optional.empty();
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException("Failed to query favorite album", e);
-        }
-    }
-
     public List<RecentPlay> getRecentlyPlayed(int userId, int limit) {
         validateLimit(limit);
         String sql = "SELECT ph.play_id, s.song_id, s.title, ph.played_at, ph.duration_listened " +
@@ -349,12 +296,6 @@ public class StatsService {
     }
 
     public record ArtistPlayStat(int artistId, String artistName, int playCount, int totalSeconds) {
-    }
-
-    public record GenrePlayStat(String genre, int playCount, int totalSeconds) {
-    }
-
-    public record AlbumPlayStat(int albumId, String albumTitle, int playCount, int totalSeconds) {
     }
 
     public record RecentPlay(int playId, int songId, String songTitle, String playedAt, int durationListened) {

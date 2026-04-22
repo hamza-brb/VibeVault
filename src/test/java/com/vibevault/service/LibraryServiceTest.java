@@ -3,7 +3,6 @@ package com.vibevault.service;
 import com.vibevault.dao.PlayHistoryDAO;
 import com.vibevault.dao.UserDAO;
 import com.vibevault.db.DatabaseManager;
-import com.vibevault.model.Album;
 import com.vibevault.model.Song;
 import com.vibevault.model.User;
 import org.junit.jupiter.api.AfterEach;
@@ -45,11 +44,11 @@ class LibraryServiceTest {
     }
 
     @Test
-    void shouldImportSongCreateArtistAlbumAndAddToUserLibrary() {
+    void shouldImportSongCreateArtistAndAddToUserLibrary() {
         User user = userDAO.create(new User(null, "library-user", "hash", null));
 
         Song song = libraryService.importSong(user.getUserId(), new LibraryService.SongImportRequest(
-                "Numb", "Linkin Park", "Meteora", "Rock", 185, "library://tracks/numb", 3, 2003
+                "Numb", "Linkin Park", 185, "library://tracks/numb", 3, 2003
         ));
 
         assertNotNull(song.getSongId());
@@ -58,17 +57,13 @@ class LibraryServiceTest {
         assertEquals(1, songs.size());
         assertEquals("Numb", songs.get(0).getTitle());
         assertEquals("library://tracks/numb", songs.get(0).getFilePath());
-
-        List<Album> albums = libraryService.getAlbumsByArtist(songs.get(0).getArtistId());
-        assertEquals(1, albums.size());
-        assertEquals("Meteora", albums.get(0).getTitle());
     }
 
     @Test
     void shouldReuseExistingSongAndNotDuplicateLibraryEntry() {
         User user = userDAO.create(new User(null, "reuse-user", "hash", null));
         LibraryService.SongImportRequest request = new LibraryService.SongImportRequest(
-                "Viva La Vida", "Coldplay", "Viva La Vida", "Pop", 242, "https://example.com/audio/viva-la-vida.mp3", 1, 2008
+                "Viva La Vida", "Coldplay", 242, "https://example.com/audio/viva-la-vida.mp3", 1, 2008
         );
 
         Song first = libraryService.importSong(user.getUserId(), request);
@@ -82,10 +77,10 @@ class LibraryServiceTest {
     void shouldExposeArtistsByPlayCounts() {
         User user = userDAO.create(new User(null, "stats-user", "hash", null));
         Song songA = libraryService.importSong(user.getUserId(), new LibraryService.SongImportRequest(
-                "Song A", "Artist A", "Album A", "Pop", 180, "library://song-a", 1, 2024
+                "Song A", "Artist A", 180, "library://song-a", 1, 2024
         ));
         Song songB = libraryService.importSong(user.getUserId(), new LibraryService.SongImportRequest(
-                "Song B", "Artist B", "Album B", "Rock", 200, "library://song-b", 1, 2024
+                "Song B", "Artist B", 200, "library://song-b", 1, 2024
         ));
 
         playHistoryDAO.logPlay(user.getUserId(), songA.getSongId(), 120);
@@ -104,30 +99,30 @@ class LibraryServiceTest {
 
         assertThrows(IllegalArgumentException.class, () -> libraryService.importSong(user.getUserId(), null));
         assertThrows(IllegalArgumentException.class, () -> libraryService.importSong(user.getUserId(),
-                new LibraryService.SongImportRequest("", "Artist", "Album", "Pop", 100, "library://x", 1, 2024)));
+                new LibraryService.SongImportRequest("", "Artist", 100, "library://x", 1, 2024)));
         assertThrows(IllegalArgumentException.class, () -> libraryService.importSong(user.getUserId(),
-                new LibraryService.SongImportRequest("Song", "", "Album", "Pop", 100, "library://x", 1, 2024)));
+                new LibraryService.SongImportRequest("Song", "", 100, "library://x", 1, 2024)));
         assertThrows(IllegalArgumentException.class, () -> libraryService.importSong(user.getUserId(),
-                new LibraryService.SongImportRequest("Song", "Artist", "Album", "Pop", 100, " ", 1, 2024)));
+                new LibraryService.SongImportRequest("Song", "Artist", 100, " ", 1, 2024)));
     }
 
     @Test
-    void shouldProvideArtistAlbumAndSongBrowseViewsForUserLibrary() {
+    void shouldProvideArtistAndSongBrowseViewsForUserLibrary() {
         User user = userDAO.create(new User(null, "browse-user", "hash", null));
         User otherUser = userDAO.create(new User(null, "other-browse-user", "hash", null));
 
         Song numb = libraryService.importSong(user.getUserId(), new LibraryService.SongImportRequest(
-                "Numb", "Linkin Park", "Meteora", "Rock", 185, "library://browse/numb", 2, 2003
+                "Numb", "Linkin Park", 185, "library://browse/numb", 2, 2003
         ));
         Song faint = libraryService.importSong(user.getUserId(), new LibraryService.SongImportRequest(
-                "Faint", "Linkin Park", "Meteora", "Rock", 162, "library://browse/faint", 7, 2003
+                "Faint", "Linkin Park", 162, "library://browse/faint", 7, 2003
         ));
         libraryService.importSong(user.getUserId(), new LibraryService.SongImportRequest(
-                "Fix You", "Coldplay", "X&Y", "Pop", 295, "library://browse/fix-you", 4, 2005
+                "Fix You", "Coldplay", 295, "library://browse/fix-you", 4, 2005
         ));
 
         libraryService.importSong(otherUser.getUserId(), new LibraryService.SongImportRequest(
-                "Paradise", "Coldplay", "Mylo Xyloto", "Pop", 278, "library://browse/paradise", 3, 2011
+                "Paradise", "Coldplay", 278, "library://browse/paradise", 3, 2011
         ));
 
         List<LibraryService.ArtistLibrarySummary> artistSummaries = libraryService.getArtistBrowseSummaries(user.getUserId());
@@ -138,21 +133,10 @@ class LibraryServiceTest {
         assertEquals(347, artistSummaries.get(1).totalDurationSeconds());
 
         int linkinParkArtistId = artistSummaries.get(1).artistId();
-        List<LibraryService.AlbumLibrarySummary> albumSummaries = libraryService.getAlbumBrowseSummaries(user.getUserId(), linkinParkArtistId);
-        assertEquals(1, albumSummaries.size());
-        assertEquals("Meteora", albumSummaries.get(0).albumTitle());
-        assertEquals(2, albumSummaries.get(0).songCount());
-
         List<Song> artistSongs = libraryService.getSongsByArtistInUserLibrary(user.getUserId(), linkinParkArtistId);
         assertEquals(2, artistSongs.size());
         assertEquals("Numb", artistSongs.get(0).getTitle());
         assertEquals("Faint", artistSongs.get(1).getTitle());
-
-        int meteoraAlbumId = albumSummaries.get(0).albumId();
-        List<Song> albumSongs = libraryService.getSongsByAlbumInUserLibrary(user.getUserId(), meteoraAlbumId);
-        assertEquals(2, albumSongs.size());
-        assertEquals("Numb", albumSongs.get(0).getTitle());
-        assertEquals("Faint", albumSongs.get(1).getTitle());
 
         assertTrue(libraryService.getSongsByArtistInUserLibrary(otherUser.getUserId(), linkinParkArtistId).isEmpty());
     }

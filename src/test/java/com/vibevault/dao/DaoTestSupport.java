@@ -1,7 +1,6 @@
 package com.vibevault.dao;
 
 import com.vibevault.db.DatabaseManager;
-import com.vibevault.model.Album;
 import com.vibevault.model.Artist;
 import com.vibevault.model.Song;
 import com.vibevault.model.User;
@@ -25,12 +24,8 @@ class DaoTestSupport {
         return artistDAO.create(new Artist(null, name, null));
     }
 
-    Album createAlbum(AlbumDAO albumDAO, int artistId, String title) {
-        return albumDAO.create(new Album(null, title, artistId, 2024, null));
-    }
-
-    Song createSong(SongDAO songDAO, int artistId, Integer albumId, String title, String filePath) {
-        Song song = new Song(null, title, artistId, albumId, "Pop", 180, filePath, 1, 2024);
+    Song createSong(SongDAO songDAO, int artistId, String title, String filePath) {
+        Song song = new Song(null, title, artistId, 180, filePath, 1, 2024);
         return songDAO.create(song);
     }
 }

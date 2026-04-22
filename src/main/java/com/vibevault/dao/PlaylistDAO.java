@@ -97,7 +97,7 @@ public class PlaylistDAO {
     }
 
     public List<Song> getSongs(int playlistId) {
-        String sql = "SELECT s.song_id, s.title, s.artist_id, s.album_id, s.genre, s.duration_seconds, s.file_path, s.track_number, s.year " +
+        String sql = "SELECT s.song_id, s.title, s.artist_id, s.duration_seconds, s.file_path, s.track_number, s.year " +
                 "FROM songs s JOIN playlist_songs ps ON s.song_id = ps.song_id WHERE ps.playlist_id = ? ORDER BY ps.position ASC";
         List<Song> songs = new ArrayList<>();
         try (Connection connection = databaseManager.getConnection();
@@ -109,8 +109,6 @@ public class PlaylistDAO {
                             rs.getInt("song_id"),
                             rs.getString("title"),
                             rs.getInt("artist_id"),
-                            (Integer) rs.getObject("album_id"),
-                            rs.getString("genre"),
                             (Integer) rs.getObject("duration_seconds"),
                             rs.getString("file_path"),
                             (Integer) rs.getObject("track_number"),

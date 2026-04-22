@@ -20,18 +20,16 @@ public class SongDAO {
     }
 
     public Song create(Song song) {
-        String sql = "INSERT INTO songs(title, artist_id, album_id, genre, duration_seconds, file_path, track_number, year) " +
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO songs(title, artist_id, duration_seconds, file_path, track_number, year) " +
+                "VALUES(?, ?, ?, ?, ?, ?)";
         try (Connection connection = databaseManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, song.getTitle());
             statement.setInt(2, song.getArtistId());
-            statement.setObject(3, song.getAlbumId());
-            statement.setString(4, song.getGenre());
-            statement.setObject(5, song.getDurationSeconds());
-            statement.setString(6, song.getFilePath());
-            statement.setObject(7, song.getTrackNumber());
-            statement.setObject(8, song.getYear());
+            statement.setObject(3, song.getDurationSeconds());
+            statement.setString(4, song.getFilePath());
+            statement.setObject(5, song.getTrackNumber());
+            statement.setObject(6, song.getYear());
             statement.executeUpdate();
             try (ResultSet keys = statement.getGeneratedKeys()) {
                 if (keys.next()) {
@@ -45,7 +43,7 @@ public class SongDAO {
     }
 
     public Optional<Song> findById(int songId) {
-        String sql = "SELECT song_id, title, artist_id, album_id, genre, duration_seconds, file_path, track_number, year " +
+        String sql = "SELECT song_id, title, artist_id, duration_seconds, file_path, track_number, year " +
                 "FROM songs WHERE song_id = ?";
         try (Connection connection = databaseManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -62,7 +60,7 @@ public class SongDAO {
     }
 
     public List<Song> findByUserLibrary(int userId) {
-        String sql = "SELECT s.song_id, s.title, s.artist_id, s.album_id, s.genre, s.duration_seconds, s.file_path, s.track_number, s.year " +
+        String sql = "SELECT s.song_id, s.title, s.artist_id, s.duration_seconds, s.file_path, s.track_number, s.year " +
                 "FROM songs s JOIN user_library ul ON s.song_id = ul.song_id WHERE ul.user_id = ? ORDER BY s.title";
         List<Song> songs = new ArrayList<>();
         try (Connection connection = databaseManager.getConnection();
@@ -80,7 +78,7 @@ public class SongDAO {
     }
 
     public Optional<Song> findByFilePath(String filePath) {
-        String sql = "SELECT song_id, title, artist_id, album_id, genre, duration_seconds, file_path, track_number, year " +
+        String sql = "SELECT song_id, title, artist_id, duration_seconds, file_path, track_number, year " +
                 "FROM songs WHERE file_path = ?";
         try (Connection connection = databaseManager.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -162,8 +160,6 @@ public class SongDAO {
                 rs.getInt("song_id"),
                 rs.getString("title"),
                 rs.getInt("artist_id"),
-                (Integer) rs.getObject("album_id"),
-                rs.getString("genre"),
                 (Integer) rs.getObject("duration_seconds"),
                 rs.getString("file_path"),
                 (Integer) rs.getObject("track_number"),

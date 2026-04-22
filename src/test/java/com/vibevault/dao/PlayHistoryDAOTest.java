@@ -1,7 +1,6 @@
 package com.vibevault.dao;
 
 import com.vibevault.db.DatabaseManager;
-import com.vibevault.model.Album;
 import com.vibevault.model.Artist;
 import com.vibevault.model.Song;
 import com.vibevault.model.User;
@@ -16,7 +15,6 @@ class PlayHistoryDAOTest {
     private DatabaseManager databaseManager;
     private UserDAO userDAO;
     private ArtistDAO artistDAO;
-    private AlbumDAO albumDAO;
     private SongDAO songDAO;
     private PlayHistoryDAO playHistoryDAO;
 
@@ -25,7 +23,6 @@ class PlayHistoryDAOTest {
         databaseManager = support.createInMemoryDatabase();
         userDAO = new UserDAO(databaseManager);
         artistDAO = new ArtistDAO(databaseManager);
-        albumDAO = new AlbumDAO(databaseManager);
         songDAO = new SongDAO(databaseManager);
         playHistoryDAO = new PlayHistoryDAO(databaseManager);
     }
@@ -39,8 +36,7 @@ class PlayHistoryDAOTest {
     void shouldLogPlayEventsAndCalculateListeningMinutes() {
         User user = support.createUser(userDAO, "stats-user");
         Artist artist = support.createArtist(artistDAO, "Imagine Dragons");
-        Album album = support.createAlbum(albumDAO, artist.getArtistId(), "Evolve");
-        Song song = support.createSong(songDAO, artist.getArtistId(), album.getAlbumId(), "Believer", "C:\\music\\believer.mp3");
+        Song song = support.createSong(songDAO, artist.getArtistId(), "Believer", "C:\\music\\believer.mp3");
 
         playHistoryDAO.logPlay(user.getUserId(), song.getSongId(), 120);
         playHistoryDAO.logPlay(user.getUserId(), song.getSongId(), 180);

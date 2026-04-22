@@ -13,27 +13,15 @@ CREATE TABLE IF NOT EXISTS artists (
     bio       TEXT
 );
 
-CREATE TABLE IF NOT EXISTS albums (
-    album_id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    title          TEXT    NOT NULL,
-    artist_id      INTEGER NOT NULL,
-    release_year   INTEGER,
-    cover_art_path TEXT,
-    FOREIGN KEY (artist_id) REFERENCES artists(artist_id) ON DELETE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS songs (
     song_id          INTEGER PRIMARY KEY AUTOINCREMENT,
     title            TEXT    NOT NULL,
     artist_id        INTEGER NOT NULL,
-    album_id         INTEGER,
-    genre            TEXT,
     duration_seconds INTEGER,
     file_path        TEXT    NOT NULL UNIQUE,
     track_number     INTEGER,
     year             INTEGER,
-    FOREIGN KEY (artist_id) REFERENCES artists(artist_id),
-    FOREIGN KEY (album_id)  REFERENCES albums(album_id)
+    FOREIGN KEY (artist_id) REFERENCES artists(artist_id)
 );
 
 CREATE TABLE IF NOT EXISTS user_library (
@@ -76,7 +64,6 @@ CREATE INDEX IF NOT EXISTS idx_play_history_user ON play_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_play_history_song ON play_history(song_id);
 CREATE INDEX IF NOT EXISTS idx_play_history_date ON play_history(played_at);
 CREATE INDEX IF NOT EXISTS idx_songs_artist ON songs(artist_id);
-CREATE INDEX IF NOT EXISTS idx_songs_album ON songs(album_id);
 
 CREATE TABLE IF NOT EXISTS watched_folders (
     folder_id  INTEGER PRIMARY KEY AUTOINCREMENT,

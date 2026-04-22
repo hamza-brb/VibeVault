@@ -1,12 +1,10 @@
 package com.vibevault.service;
 
-import com.vibevault.dao.AlbumDAO;
 import com.vibevault.dao.ArtistDAO;
 import com.vibevault.dao.PlayHistoryDAO;
 import com.vibevault.dao.SongDAO;
 import com.vibevault.dao.UserDAO;
 import com.vibevault.db.DatabaseManager;
-import com.vibevault.model.Album;
 import com.vibevault.model.Artist;
 import com.vibevault.model.PlayHistory;
 import com.vibevault.model.Song;
@@ -46,14 +44,11 @@ class PlayerServiceTest {
 
         UserDAO userDAO = new UserDAO(databaseManager);
         ArtistDAO artistDAO = new ArtistDAO(databaseManager);
-        AlbumDAO albumDAO = new AlbumDAO(databaseManager);
         SongDAO songDAO = new SongDAO(databaseManager);
         playHistoryDAO = new PlayHistoryDAO(databaseManager);
 
         user = userDAO.create(new User(null, "player-user", "hash", null));
         Artist artist = artistDAO.create(new Artist(null, "Player Artist", null));
-        Album album = albumDAO.create(new Album(null, "Player Album", artist.getArtistId(), 2024, null));
-
         tempFiles = new ArrayList<>();
         Path songAPath = Files.createTempFile("song-a", ".mp3");
         Path songBPath = Files.createTempFile("song-b", ".mp3");
@@ -62,9 +57,9 @@ class PlayerServiceTest {
         tempFiles.add(songBPath);
         tempFiles.add(songCPath);
 
-        Song songA = songDAO.create(new Song(null, "Song A", artist.getArtistId(), album.getAlbumId(), "Pop", 180, songAPath.toString(), 1, 2024));
-        Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), album.getAlbumId(), "Pop", 180, songBPath.toString(), 2, 2024));
-        Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), album.getAlbumId(), "Pop", 180, songCPath.toString(), 3, 2024));
+        Song songA = songDAO.create(new Song(null, "Song A", artist.getArtistId(), 180, songAPath.toString(), 1, 2024));
+        Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), 180, songBPath.toString(), 2, 2024));
+        Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), 180, songCPath.toString(), 3, 2024));
         songs = List.of(songA, songB, songC);
     }
 

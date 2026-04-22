@@ -1,7 +1,6 @@
 package com.vibevault.dao;
 
 import com.vibevault.db.DatabaseManager;
-import com.vibevault.model.Album;
 import com.vibevault.model.Artist;
 import com.vibevault.model.Song;
 import com.vibevault.model.User;
@@ -19,7 +18,6 @@ class LibraryDAOTest {
     private DatabaseManager databaseManager;
     private UserDAO userDAO;
     private ArtistDAO artistDAO;
-    private AlbumDAO albumDAO;
     private SongDAO songDAO;
 
     @BeforeEach
@@ -27,7 +25,6 @@ class LibraryDAOTest {
         databaseManager = support.createInMemoryDatabase();
         userDAO = new UserDAO(databaseManager);
         artistDAO = new ArtistDAO(databaseManager);
-        albumDAO = new AlbumDAO(databaseManager);
         songDAO = new SongDAO(databaseManager);
     }
 
@@ -40,8 +37,7 @@ class LibraryDAOTest {
     void shouldCreateArtistAlbumSongAndManageUserLibrary() {
         User user = support.createUser(userDAO, "shehryar");
         Artist artist = support.createArtist(artistDAO, "Adele");
-        Album album = support.createAlbum(albumDAO, artist.getArtistId(), "30");
-        Song song = support.createSong(songDAO, artist.getArtistId(), album.getAlbumId(), "Easy On Me", "C:\\music\\easy-on-me.mp3");
+        Song song = support.createSong(songDAO, artist.getArtistId(), "Easy On Me", "C:\\music\\easy-on-me.mp3");
 
         assertTrue(songDAO.addToUserLibrary(user.getUserId(), song.getSongId()));
         List<Song> librarySongs = songDAO.findByUserLibrary(user.getUserId());
@@ -52,13 +48,4 @@ class LibraryDAOTest {
         assertEquals(0, songDAO.findByUserLibrary(user.getUserId()).size());
     }
 
-    @Test
-    void shouldUpdateAlbumCoverArtPath() {
-        Artist artist = support.createArtist(artistDAO, "The Weeknd");
-        Album album = support.createAlbum(albumDAO, artist.getArtistId(), "After Hours");
-
-        assertTrue(albumDAO.updateCoverArtPath(album.getAlbumId(), "covers\\album-" + album.getAlbumId() + ".jpg"));
-        String storedPath = albumDAO.findById(album.getAlbumId()).orElseThrow().getCoverArtPath();
-        assertEquals("covers\\album-" + album.getAlbumId() + ".jpg", storedPath);
-    }
 }

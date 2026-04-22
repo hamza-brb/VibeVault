@@ -9,7 +9,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiConsumer;
 
 public class LibraryScanService {
@@ -88,18 +90,29 @@ public class LibraryScanService {
         int imported = 0;
         int skipped = 0;
         int failed = 0;
+        Set<String> existingPaths = new HashSet<>();
+        for (Song song : libraryService.getUserLibrarySongs(userId)) {
+            if (song.getFilePath() != null) {
+                existingPaths.add(Path.of(song.getFilePath()).toAbsolutePath().normalize().toString());
+            }
+        }
 
-        // Step 3: Import each file
         for (int i = 0; i < allMp3s.size(); i++) {
             Path mp3 = allMp3s.get(i);
+            String normalizedPath = mp3.toAbsolutePath().normalize().toString();
+            if (existingPaths.contains(normalizedPath)) {
+                skipped++;
+                if (progressCallback != null) {
+                    progressCallback.accept(i + 1, total);
+                }
+                continue;
+            }
             try {
-                // importSongFromFile returns the song; if it already exists, it
-                // calls addToUserLibraryIfMissing() which is a no-op on duplicates
                 libraryService.importSongFromFile(userId, mp3);
                 imported++;
+                existingPaths.add(normalizedPath);
             } catch (IllegalArgumentException e) {
-                // File already in library or invalid
-                skipped++;
+                failed++;
             } catch (Exception e) {
                 failed++;
             }

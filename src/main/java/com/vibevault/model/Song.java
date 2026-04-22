@@ -4,8 +4,6 @@ public class Song {
     private Integer songId;
     private String title;
     private Integer artistId;
-    private Integer albumId;
-    private String genre;
     private Integer durationSeconds;
     private String filePath;
     private Integer trackNumber;
@@ -14,13 +12,11 @@ public class Song {
     public Song() {
     }
 
-    public Song(Integer songId, String title, Integer artistId, Integer albumId, String genre,
+    public Song(Integer songId, String title, Integer artistId,
                 Integer durationSeconds, String filePath, Integer trackNumber, Integer year) {
         this.songId = songId;
         this.title = title;
         this.artistId = artistId;
-        this.albumId = albumId;
-        this.genre = genre;
         this.durationSeconds = durationSeconds;
         this.filePath = filePath;
         this.trackNumber = trackNumber;
@@ -49,22 +45,6 @@ public class Song {
 
     public void setArtistId(Integer artistId) {
         this.artistId = artistId;
-    }
-
-    public Integer getAlbumId() {
-        return albumId;
-    }
-
-    public void setAlbumId(Integer albumId) {
-        this.albumId = albumId;
-    }
-
-    public String getGenre() {
-        return genre;
-    }
-
-    public void setGenre(String genre) {
-        this.genre = genre;
     }
 
     public Integer getDurationSeconds() {

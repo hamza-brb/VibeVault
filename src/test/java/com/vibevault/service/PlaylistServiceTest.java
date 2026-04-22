@@ -1,11 +1,9 @@
 package com.vibevault.service;
 
-import com.vibevault.dao.AlbumDAO;
 import com.vibevault.dao.ArtistDAO;
 import com.vibevault.dao.SongDAO;
 import com.vibevault.dao.UserDAO;
 import com.vibevault.db.DatabaseManager;
-import com.vibevault.model.Album;
 import com.vibevault.model.Artist;
 import com.vibevault.model.Playlist;
 import com.vibevault.model.Song;
@@ -26,7 +24,6 @@ class PlaylistServiceTest {
     private DatabaseManager databaseManager;
     private UserDAO userDAO;
     private ArtistDAO artistDAO;
-    private AlbumDAO albumDAO;
     private SongDAO songDAO;
     private PlaylistService playlistService;
 
@@ -39,7 +36,6 @@ class PlaylistServiceTest {
 
         userDAO = new UserDAO(databaseManager);
         artistDAO = new ArtistDAO(databaseManager);
-        albumDAO = new AlbumDAO(databaseManager);
         songDAO = new SongDAO(databaseManager);
         playlistService = new PlaylistService(databaseManager);
     }
@@ -120,11 +116,9 @@ class PlaylistServiceTest {
     private SeedData seedSongs() {
         User user = userDAO.create(new User(null, "playlist-user-" + UUID.randomUUID(), "hash", null));
         Artist artist = artistDAO.create(new Artist(null, "Artist " + UUID.randomUUID(), null));
-        Album album = albumDAO.create(new Album(null, "Album " + UUID.randomUUID(), artist.getArtistId(), 2024, null));
-
-        Song songA = songDAO.create(new Song(null, "Song A", artist.getArtistId(), album.getAlbumId(), "Pop", 180, "C:\\music\\song-a-" + UUID.randomUUID() + ".mp3", 1, 2024));
-        Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), album.getAlbumId(), "Pop", 190, "C:\\music\\song-b-" + UUID.randomUUID() + ".mp3", 2, 2024));
-        Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), album.getAlbumId(), "Pop", 200, "C:\\music\\song-c-" + UUID.randomUUID() + ".mp3", 3, 2024));
+        Song songA = songDAO.create(new Song(null, "Song A", artist.getArtistId(), 180, "C:\\music\\song-a-" + UUID.randomUUID() + ".mp3", 1, 2024));
+        Song songB = songDAO.create(new Song(null, "Song B", artist.getArtistId(), 190, "C:\\music\\song-b-" + UUID.randomUUID() + ".mp3", 2, 2024));
+        Song songC = songDAO.create(new Song(null, "Song C", artist.getArtistId(), 200, "C:\\music\\song-c-" + UUID.randomUUID() + ".mp3", 3, 2024));
 
         songDAO.addToUserLibraryIfMissing(user.getUserId(), songA.getSongId());
         songDAO.addToUserLibraryIfMissing(user.getUserId(), songB.getSongId());

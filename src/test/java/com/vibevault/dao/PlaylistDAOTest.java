@@ -1,7 +1,6 @@
 package com.vibevault.dao;
 
 import com.vibevault.db.DatabaseManager;
-import com.vibevault.model.Album;
 import com.vibevault.model.Artist;
 import com.vibevault.model.Playlist;
 import com.vibevault.model.Song;
@@ -20,7 +19,6 @@ class PlaylistDAOTest {
     private DatabaseManager databaseManager;
     private UserDAO userDAO;
     private ArtistDAO artistDAO;
-    private AlbumDAO albumDAO;
     private SongDAO songDAO;
     private PlaylistDAO playlistDAO;
 
@@ -29,7 +27,6 @@ class PlaylistDAOTest {
         databaseManager = support.createInMemoryDatabase();
         userDAO = new UserDAO(databaseManager);
         artistDAO = new ArtistDAO(databaseManager);
-        albumDAO = new AlbumDAO(databaseManager);
         songDAO = new SongDAO(databaseManager);
         playlistDAO = new PlaylistDAO(databaseManager);
     }
@@ -43,8 +40,7 @@ class PlaylistDAOTest {
     void shouldCreatePlaylistAddSongAndDelete() {
         User user = support.createUser(userDAO, "hamza");
         Artist artist = support.createArtist(artistDAO, "Coldplay");
-        Album album = support.createAlbum(albumDAO, artist.getArtistId(), "Parachutes");
-        Song song = support.createSong(songDAO, artist.getArtistId(), album.getAlbumId(), "Yellow", "C:\\music\\yellow.mp3");
+        Song song = support.createSong(songDAO, artist.getArtistId(), "Yellow", "C:\\music\\yellow.mp3");
 
         Playlist playlist = playlistDAO.create(new Playlist(null, user.getUserId(), "Favourites", null));
         assertTrue(playlist.getPlaylistId() != null);
