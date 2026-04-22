@@ -27,32 +27,6 @@ public class StatsService {
         return querySongStats(userId, limit, sql);
     }
 
-    public List<SongPlayStat> getTopSongsAllUsers(int limit) {
-        validateLimit(limit);
-        String sql = "SELECT s.song_id, s.title, COUNT(ph.play_id) AS play_count, COALESCE(SUM(ph.duration_listened), 0) AS total_seconds " +
-                "FROM play_history ph JOIN songs s ON s.song_id = ph.song_id " +
-                "GROUP BY s.song_id, s.title " +
-                "ORDER BY play_count DESC, total_seconds DESC, s.title ASC LIMIT ?";
-        List<SongPlayStat> stats = new ArrayList<>();
-        try (Connection connection = databaseManager.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, limit);
-            try (ResultSet rs = statement.executeQuery()) {
-                while (rs.next()) {
-                    stats.add(new SongPlayStat(
-                            rs.getInt("song_id"),
-                            rs.getString("title"),
-                            rs.getInt("play_count"),
-                            rs.getInt("total_seconds")
-                    ));
-                }
-            }
-            return stats;
-        } catch (SQLException e) {
-            throw new IllegalStateException("Failed to query global top songs", e);
-        }
-    }
-
     public List<ArtistPlayStat> getTopArtists(int userId, int limit) {
         validateLimit(limit);
         String sql = "SELECT a.artist_id, a.name, COUNT(ph.play_id) AS play_count, COALESCE(SUM(ph.duration_listened), 0) AS total_seconds " +

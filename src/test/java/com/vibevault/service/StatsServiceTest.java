@@ -139,7 +139,6 @@ class StatsServiceTest {
     @Test
     void shouldRejectInvalidLimit() {
         assertThrows(IllegalArgumentException.class, () -> statsService.getTopSongs(1, 0));
-        assertThrows(IllegalArgumentException.class, () -> statsService.getTopSongsAllUsers(0));
         assertThrows(IllegalArgumentException.class, () -> statsService.getTopArtists(1, -1));
         assertThrows(IllegalArgumentException.class, () -> statsService.getTopArtistsAllUsers(-1));
         assertThrows(IllegalArgumentException.class, () -> statsService.getRecentlyPlayed(1, 0));
@@ -153,7 +152,7 @@ class StatsServiceTest {
     }
 
     @Test
-    void shouldReturnGlobalAdminStatsAcrossAllUsers() {
+    void shouldReturnGlobalAdminArtistAndListeningStatsAcrossAllUsers() {
         User user1 = userDAO.create(new User(null, "admin-user-1", "hash-1", null));
         User user2 = userDAO.create(new User(null, "admin-user-2", "hash-2", null));
 
@@ -165,12 +164,6 @@ class StatsServiceTest {
         playHistoryDAO.logPlay(user1.getUserId(), song1.getSongId(), 60);
         playHistoryDAO.logPlay(user2.getUserId(), song1.getSongId(), 90);
         playHistoryDAO.logPlay(user2.getUserId(), song2.getSongId(), 120);
-
-        List<StatsService.SongPlayStat> topSongs = statsService.getTopSongsAllUsers(5);
-        assertEquals(2, topSongs.size());
-        assertEquals("Global Song 1", topSongs.get(0).songTitle());
-        assertEquals(2, topSongs.get(0).playCount());
-        assertEquals(150, topSongs.get(0).totalSeconds());
 
         List<StatsService.ArtistPlayStat> topArtists = statsService.getTopArtistsAllUsers(5);
         assertEquals(2, topArtists.size());
