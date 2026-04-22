@@ -61,6 +61,18 @@ public class PlayHistoryDAO {
         }
     }
 
+    public boolean updateDurationListened(int playId, int durationListened) {
+        String sql = "UPDATE play_history SET duration_listened = ? WHERE play_id = ?";
+        try (Connection connection = databaseManager.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, Math.max(0, durationListened));
+            statement.setInt(2, playId);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to update play duration", e);
+        }
+    }
+
     public double getTotalListeningMinutes(int userId) {
         String sql = "SELECT ROUND(COALESCE(SUM(duration_listened), 0) / 60.0, 1) AS total_minutes " +
                 "FROM play_history WHERE user_id = ?";

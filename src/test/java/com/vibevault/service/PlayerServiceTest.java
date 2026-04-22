@@ -154,16 +154,23 @@ class PlayerServiceTest {
     }
 
     @Test
-    void shouldAutoLogPlaybackWhenActiveUserPausesAfterFiveSeconds() {
+    void shouldIncrementOnSongStartButNotOnPauseResume() {
         PlayerService playerService = new PlayerService(databaseManager);
         playerService.setActiveUserId(user.getUserId());
         playerService.setQueue(songs);
 
         playerService.play();
+        assertEquals(1, playHistoryDAO.findRecentByUser(user.getUserId(), 10).size());
+
         playerService.seekToSecond(6);
         playerService.pause();
+        assertEquals(1, playHistoryDAO.findRecentByUser(user.getUserId(), 10).size());
 
-        assertFalse(playHistoryDAO.findRecentByUser(user.getUserId(), 10).isEmpty());
+        playerService.resume();
+        assertEquals(1, playHistoryDAO.findRecentByUser(user.getUserId(), 10).size());
+
+        playerService.next();
+        assertEquals(2, playHistoryDAO.findRecentByUser(user.getUserId(), 10).size());
     }
 
     @Test

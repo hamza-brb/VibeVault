@@ -11,6 +11,9 @@ import java.util.Objects;
 import java.util.Optional;
 
 public class AuthService {
+    private static final int MIN_USERNAME_LENGTH = 6;
+    private static final int MIN_PASSWORD_LENGTH = 8;
+
     private final UserDAO userDAO;
     private User currentUser;
 
@@ -19,6 +22,7 @@ public class AuthService {
     }
 
     public User register(String username, String plainPassword) {
+        validateRegisterNoSpaces(username, plainPassword);
         String normalizedUsername = normalizeUsername(username);
         String normalizedPassword = normalizePassword(plainPassword);
 
@@ -48,6 +52,16 @@ public class AuthService {
         currentUser = null;
     }
 
+    public boolean deleteCurrentUserAccount() {
+        if (currentUser == null) {
+            throw new IllegalStateException("No authenticated user");
+        }
+        int userId = currentUser.getUserId();
+        boolean deleted = userDAO.delete(userId);
+        currentUser = null;
+        return deleted;
+    }
+
     public Optional<User> getCurrentUser() {
         return Optional.ofNullable(currentUser);
     }
@@ -72,6 +86,22 @@ public class AuthService {
             throw new IllegalArgumentException("Password must not be blank");
         }
         return password;
+    }
+
+    private static void validateRegisterNoSpaces(String username, String plainPassword) {
+        if (username != null && username.contains(" ")) {
+            throw new IllegalArgumentException("Username cannot contain spaces");
+        }
+        if (plainPassword != null && plainPassword.contains(" ")) {
+            throw new IllegalArgumentException("Password cannot contain spaces");
+        }
+        String normalizedUsername = username == null ? null : username.trim();
+        if (normalizedUsername != null && !normalizedUsername.isEmpty() && normalizedUsername.length() < MIN_USERNAME_LENGTH) {
+            throw new IllegalArgumentException("Username must be at least 6 characters");
+        }
+        if (plainPassword != null && !plainPassword.isBlank() && plainPassword.length() < MIN_PASSWORD_LENGTH) {
+            throw new IllegalArgumentException("Password must be at least 8 characters");
+        }
     }
 
     private static String hashPassword(String plainPassword) {

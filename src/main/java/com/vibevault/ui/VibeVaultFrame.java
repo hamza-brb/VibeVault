@@ -93,6 +93,7 @@ public class VibeVaultFrame extends JFrame {
     private static final Color STEEL_BLUE = Theme.BG_BORDER;
     private static final Color MUTED_BLUE = Theme.ACCENT;
     private static final Color CREAM = Theme.TEXT_PRIMARY;
+    private static final Color AUTH_SUCCESS_GREEN = new Color(0x1ED760);
 
     private static final String CARD_AUTH = "auth";
     private static final String CARD_DASHBOARD = "dashboard";
@@ -339,9 +340,13 @@ public class VibeVaultFrame extends JFrame {
                             updateNowPlayingLabel();
                             refreshQueueTable();
                             libraryTable.repaint();
+                            refreshStatsForAuthenticatedUser();
                         });
                     } else {
-                        SwingUtilities.invokeLater(this::updateNowPlayingLabel);
+                        SwingUtilities.invokeLater(() -> {
+                            updateNowPlayingLabel();
+                            refreshStatsForAuthenticatedUser();
+                        });
                     }
                 } else {
                     SwingUtilities.invokeLater(() -> {
@@ -662,6 +667,7 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private JPanel buildNowPlayingBar() {
+        final int sidePanelWidth = 290;
         JPanel bar = new JPanel(new BorderLayout(16, 0));
         bar.setBackground(Theme.BG_SURFACE);
         bar.setPreferredSize(new Dimension(0, 104));
@@ -685,7 +691,7 @@ public class VibeVaultFrame extends JFrame {
         songMetaPanel.add(nowPlayingArtistLabel);
         leftPanel.add(nowPlayingAvatar);
         leftPanel.add(songMetaPanel);
-        leftPanel.setPreferredSize(new Dimension(290, 0));
+        leftPanel.setPreferredSize(new Dimension(sidePanelWidth, 0));
 
         JPanel centerPanel = new JPanel();
         centerPanel.setOpaque(false);
@@ -748,11 +754,13 @@ public class VibeVaultFrame extends JFrame {
             updateNowPlayingLabel();
         };
         seekSlider.addChangeListener(seekListener);
+        installSliderJumpToClick(seekSlider);
 
         volumeSlider.addChangeListener(e -> playerService.setVolumePercent(volumeSlider.getValue()));
+        installSliderJumpToClick(volumeSlider);
         JPanel rightControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         rightControls.setOpaque(false);
-        rightControls.setPreferredSize(new Dimension(150, 0));
+        rightControls.setPreferredSize(new Dimension(sidePanelWidth, 0));
 
         JPanel volumePanel = new JPanel(new BorderLayout(4, 0));
         volumePanel.setOpaque(false);
@@ -1074,12 +1082,12 @@ public class VibeVaultFrame extends JFrame {
                 throw new IllegalArgumentException("Passwords do not match");
             }
             authService.register(TextFieldHelper.readTextInput(usernameField), password);
-            authErrorLabel.setText("Registration successful. Please login.");
+            showAuthSuccess("Registration successful. Please login.");
             registerMode = false;
             updateAuthMode();
             resetAuthPlaceholders();
         } catch (RuntimeException ex) {
-            authErrorLabel.setText(ex.getMessage());
+            showAuthError(ex.getMessage());
         }
     }
 
@@ -1087,11 +1095,11 @@ public class VibeVaultFrame extends JFrame {
         try {
             authService.login(TextFieldHelper.readTextInput(usernameField), TextFieldHelper.readPasswordInput(passwordField))
                     .ifPresentOrElse(user -> {
-                        authErrorLabel.setText(" ");
+                        clearAuthMessage();
                         openDashboard(user);
-                    }, () -> authErrorLabel.setText("Invalid username or password"));
+                    }, () -> showAuthError("Invalid username or password"));
         } catch (RuntimeException ex) {
-            authErrorLabel.setText(ex.getMessage());
+            showAuthError(ex.getMessage());
         }
     }
 
@@ -1106,7 +1114,7 @@ public class VibeVaultFrame extends JFrame {
     private void toggleRegisterMode() {
         registerMode = !registerMode;
         updateAuthMode();
-        authErrorLabel.setText(" ");
+        clearAuthMessage();
         resetAuthPlaceholders();
     }
 
@@ -1124,7 +1132,7 @@ public class VibeVaultFrame extends JFrame {
         playerService.setActiveUserId(null);
         registerMode = false;
         updateAuthMode();
-        authErrorLabel.setText(" ");
+        clearAuthMessage();
         resetAuthPlaceholders();
         globalSearchField.setText("");
         TextFieldHelper.restorePlaceholderIfEmpty(globalSearchField);
@@ -1149,6 +1157,21 @@ public class VibeVaultFrame extends JFrame {
         }
         setActiveSection(CONTENT_LIBRARY);
         cardLayout.show(rootPanel, CARD_AUTH);
+    }
+
+    private void showAuthSuccess(String message) {
+        authErrorLabel.setForeground(AUTH_SUCCESS_GREEN);
+        authErrorLabel.setText(message);
+    }
+
+    private void showAuthError(String message) {
+        authErrorLabel.setForeground(Theme.DANGER);
+        authErrorLabel.setText(message);
+    }
+
+    private void clearAuthMessage() {
+        authErrorLabel.setForeground(Theme.DANGER);
+        authErrorLabel.setText(" ");
     }
 
     private void openDashboard(User user) {
@@ -1587,14 +1610,20 @@ public class VibeVaultFrame extends JFrame {
         if (playerService.previous().isPresent() && !playerService.isPlaying()) {
             playerService.play();
         }
-        SwingUtilities.invokeLater(this::updateNowPlayingLabel);
+        SwingUtilities.invokeLater(() -> {
+            updateNowPlayingLabel();
+            refreshStatsForAuthenticatedUser();
+        });
     }
 
     private void playNext() {
         if (playerService.next().isPresent() && !playerService.isPlaying()) {
             playerService.play();
         }
-        SwingUtilities.invokeLater(this::updateNowPlayingLabel);
+        SwingUtilities.invokeLater(() -> {
+            updateNowPlayingLabel();
+            refreshStatsForAuthenticatedUser();
+        });
     }
 
     private void toggleShuffle() {
@@ -1651,6 +1680,11 @@ public class VibeVaultFrame extends JFrame {
             case OFF -> "🔁";
             case ONE -> "🔂";
             case ALL -> "🔁●";
+        });
+        showToast("Repeat: " + switch (next) {
+            case OFF -> "OFF";
+            case ONE -> "ONE";
+            case ALL -> "ALL";
         });
     }
 
@@ -1718,6 +1752,10 @@ public class VibeVaultFrame extends JFrame {
         for (StatsService.RecentPlay play : statsService.getRecentlyPlayed(userId, 10)) {
             recentPlaysTableModel.addRow(new Object[]{play.playedAt(), play.songTitle(), play.durationListened()});
         }
+    }
+
+    private void refreshStatsForAuthenticatedUser() {
+        authService.getCurrentUser().ifPresent(user -> refreshStatsTables(user.getUserId()));
     }
 
     private void refreshPlaylists(int userId) {
@@ -2142,6 +2180,40 @@ public class VibeVaultFrame extends JFrame {
         });
     }
 
+    private void installSliderJumpToClick(JSlider slider) {
+        MouseAdapter jumpListener = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                slider.setValueIsAdjusting(true);
+                setSliderValueFromPointer(slider, e.getX());
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                setSliderValueFromPointer(slider, e.getX());
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                setSliderValueFromPointer(slider, e.getX());
+                slider.setValueIsAdjusting(false);
+            }
+        };
+        slider.addMouseListener(jumpListener);
+        slider.addMouseMotionListener(jumpListener);
+    }
+
+    private static void setSliderValueFromPointer(JSlider slider, int mouseX) {
+        java.awt.Insets insets = slider.getInsets();
+        int availableWidth = Math.max(1, slider.getWidth() - insets.left - insets.right);
+        double ratio = (mouseX - insets.left) / (double) availableWidth;
+        ratio = Math.max(0.0, Math.min(1.0, ratio));
+        int min = slider.getMinimum();
+        int max = slider.getMaximum();
+        int value = min + (int) Math.round(ratio * (max - min));
+        slider.setValue(value);
+    }
+
     private Integer getSelectedBrowseSongId() {
         int row = browseSongsTable.getSelectedRow();
         if (row < 0) {
@@ -2265,13 +2337,42 @@ public class VibeVaultFrame extends JFrame {
         header.setEnabled(false);
         JMenuItem preferences = new JMenuItem("⚙ Preferences");
         preferences.addActionListener(e -> JOptionPane.showMessageDialog(this, "Preferences are not implemented in MVP."));
+        JMenuItem deleteAccount = new JMenuItem("🗑 Delete Account");
+        deleteAccount.addActionListener(e -> deleteCurrentAccount());
         JMenuItem logout = new JMenuItem("🚪 Log Out");
         logout.addActionListener(e -> logout());
         menu.add(header);
         menu.addSeparator();
         menu.add(preferences);
+        menu.add(deleteAccount);
+        menu.addSeparator();
         menu.add(logout);
         menu.show(anchor, 0, anchor.getHeight());
+    }
+
+    private void deleteCurrentAccount() {
+        User currentUser = requireCurrentUser();
+        int choice = JOptionPane.showConfirmDialog(
+                this,
+                "Delete account '" + currentUser.getUsername() + "'?\nThis action cannot be undone.",
+                "Delete Account",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+        );
+        if (choice != JOptionPane.YES_OPTION) {
+            return;
+        }
+        try {
+            boolean deleted = authService.deleteCurrentUserAccount();
+            if (!deleted) {
+                showError("Account deletion failed.");
+                return;
+            }
+            logout();
+            JOptionPane.showMessageDialog(this, "Account deleted successfully.");
+        } catch (RuntimeException ex) {
+            showError(ex.getMessage());
+        }
     }
 
     private void showError(String message) {
@@ -2389,6 +2490,9 @@ public class VibeVaultFrame extends JFrame {
         playlistScreenSongsTable.getColumnModel().getColumn(0).setMaxWidth(44);
         playlistScreenSongsTable.getColumnModel().getColumn(0).setPreferredWidth(38);
         playlistScreenSongsTable.getColumnModel().getColumn(3).setPreferredWidth(150);
+        browseSongsTable.getColumnModel().getColumn(0).setMinWidth(34);
+        browseSongsTable.getColumnModel().getColumn(0).setMaxWidth(44);
+        browseSongsTable.getColumnModel().getColumn(0).setPreferredWidth(38);
         TableUiUtils.installEllipsisRenderer(playlistScreenSongsTable, 2);
     }
 
