@@ -11,10 +11,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
 public class LibraryScanService {
+    private static final Path SHARED_SONGS_DIR = Path.of("songs").toAbsolutePath().normalize();
 
     private final LibraryService libraryService;
     private final SongDAO songDAO;
@@ -81,9 +83,14 @@ public class LibraryScanService {
 
         // Step 2: Collect all MP3 paths from all watched folders
         List<String> folders = watchedFolderDAO.findByUser(userId);
-        List<Path> allMp3s = new ArrayList<>();
+        Set<Path> scanRoots = new LinkedHashSet<>();
+        scanRoots.add(SHARED_SONGS_DIR);
         for (String folder : folders) {
-            collectMp3s(Path.of(folder), allMp3s);
+            scanRoots.add(Path.of(folder).toAbsolutePath().normalize());
+        }
+        List<Path> allMp3s = new ArrayList<>();
+        for (Path root : scanRoots) {
+            collectMp3s(root, allMp3s);
         }
 
         int total = allMp3s.size();

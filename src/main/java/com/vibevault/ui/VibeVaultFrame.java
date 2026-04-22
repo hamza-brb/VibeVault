@@ -359,20 +359,21 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private void stylePlaybackControls() {
+        Font symbolFont = new Font("Segoe UI Symbol", Font.BOLD, 15);
         shuffleToggle.setForeground(Theme.TEXT_PRIMARY);
-        shuffleToggle.setFont(Theme.body(14f));
+        shuffleToggle.setFont(symbolFont);
         shuffleToggle.setToolTipText("Shuffle");
         repeatButton.setForeground(Theme.TEXT_PRIMARY);
-        repeatButton.setFont(Theme.body(14f).deriveFont(Font.BOLD));
+        repeatButton.setFont(symbolFont);
         repeatButton.setToolTipText("Repeat");
-        playButton.setFont(Theme.heading(16f));
+        playButton.setFont(symbolFont.deriveFont(17f));
         playButton.setPreferredSize(new Dimension(44, 36));
         playButton.setBackground(Theme.ACCENT_SOFT);
-        seekSlider.setOpaque(false);
+        seekSlider.setOpaque(true);
         seekSlider.setBackground(Theme.BG_SURFACE);
         seekSlider.setForeground(Theme.ACCENT);
         seekSlider.setUI(new AccentSliderUI(seekSlider, Theme.ACCENT, Theme.BG_BORDER));
-        volumeSlider.setOpaque(false);
+        volumeSlider.setOpaque(true);
         volumeSlider.setBackground(Theme.BG_SURFACE);
         volumeSlider.setForeground(Theme.ACCENT);
         volumeSlider.setUI(new AccentSliderUI(volumeSlider, Theme.ACCENT, Theme.BG_BORDER));
@@ -380,7 +381,7 @@ public class VibeVaultFrame extends JFrame {
     }
 
     private RoundedButton createPrimaryButton(String text) {
-        RoundedButton btn = new RoundedButton(text, 16, Theme.ACCENT_SOFT, new Color(0x0F4659), new Color(0x0A3240));
+        RoundedButton btn = new RoundedButton(text, 16, Theme.ACCENT_SOFT, new Color(0x1A4A2B), new Color(0x10331E));
         btn.setForeground(Theme.TEXT_PRIMARY);
         btn.setFont(Theme.body(13f).deriveFont(Font.BOLD));
         btn.setMargin(new java.awt.Insets(4, 12, 4, 12));
@@ -451,7 +452,7 @@ public class VibeVaultFrame extends JFrame {
         usernameField.setMaximumSize(new Dimension(320, 38));
         passwordField.setMaximumSize(new Dimension(320, 38));
 
-        authPrimaryButton = new RoundedButton("Login", 20, STEEL_BLUE, MUTED_BLUE, new Color(0x24415E));
+        authPrimaryButton = new RoundedButton("Login", 20, STEEL_BLUE, MUTED_BLUE, new Color(0x165229));
         authPrimaryButton.setForeground(CREAM);
         authPrimaryButton.setFont(new Font("Segoe UI", Font.BOLD, 13));
         authPrimaryButton.setAlignmentX(CENTER_ALIGNMENT);
@@ -468,7 +469,7 @@ public class VibeVaultFrame extends JFrame {
         authSecondaryButton.setMaximumSize(new Dimension(320, 38));
         authSecondaryButton.addActionListener(e -> toggleRegisterMode());
 
-        authErrorLabel.setForeground(new Color(0xC86B6B));
+        authErrorLabel.setForeground(Theme.DANGER);
         authErrorLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         authErrorLabel.setAlignmentX(CENTER_ALIGNMENT);
 

@@ -41,6 +41,7 @@ public class AccentSliderUI extends BasicSliderUI {
 
         if (slider.getOrientation() == JSlider.HORIZONTAL) {
             int fillWidth = thumbRect.x + (thumbRect.width / 2) - trackRect.x;
+            fillWidth = Math.max(0, Math.min(fillWidth, trackRect.width));
             if (fillWidth > 0) {
                 g2.setColor(accent);
                 g2.fill(new RoundRectangle2D.Float(trackRect.x, y, fillWidth, trackHeight, arc, arc));
@@ -57,7 +58,7 @@ public class AccentSliderUI extends BasicSliderUI {
         Ellipse2D thumb = new Ellipse2D.Float(thumbRect.x, thumbRect.y, thumbRect.width, thumbRect.height);
         g2.setColor(accent);
         g2.fill(thumb);
-        g2.setColor(new Color(255, 255, 255, 220));
+        g2.setColor(Color.WHITE);
         g2.setStroke(new BasicStroke(1f));
         g2.draw(thumb);
         g2.dispose();
@@ -71,7 +72,15 @@ public class AccentSliderUI extends BasicSliderUI {
     public void paint(Graphics g, JComponent c) {
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(c.getBackground());
+        g2.fillRect(0, 0, c.getWidth(), c.getHeight());
         super.paint(g2, c);
         g2.dispose();
+    }
+
+    @Override
+    public void setThumbLocation(int x, int y) {
+        super.setThumbLocation(x, y);
+        slider.repaint();
     }
 }
