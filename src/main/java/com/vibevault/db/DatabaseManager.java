@@ -2,6 +2,8 @@ package com.vibevault.db;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -10,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class DatabaseManager implements AutoCloseable {
-    private static final String DEFAULT_DB_URL = "jdbc:sqlite:vibevault.db";
+    private static final String DEFAULT_DB_URL = "jdbc:sqlite:" + resolveDefaultDatabasePath();
 
     private final String dbUrl;
     private volatile boolean schemaInitialized;
@@ -58,6 +60,24 @@ public class DatabaseManager implements AutoCloseable {
 
     private static boolean isInMemoryUrl(String url) {
         return url.contains(":memory:") || url.contains("mode=memory");
+    }
+
+    private static String resolveDefaultDatabasePath() {
+        Path dataDirectory = resolveAppDataDirectory();
+        try {
+            Files.createDirectories(dataDirectory);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to create application data directory", e);
+        }
+        return dataDirectory.resolve("vibevault.db").toAbsolutePath().toString();
+    }
+
+    private static Path resolveAppDataDirectory() {
+        String appData = System.getenv("APPDATA");
+        if (appData != null && !appData.isBlank()) {
+            return Path.of(appData, "VibeVault");
+        }
+        return Path.of(System.getProperty("user.home"), ".vibevault");
     }
 
     private static String readSchemaResource() throws IOException {
