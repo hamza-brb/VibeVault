@@ -1,5 +1,5 @@
 After Cloning the Repository Navigate to target/dist, There you will see VibeVault-portable.zip file
-Extract VibeVault-portable.zip and run .exe file to get started
+Extract VibeVault-portable.zip and run VibeVault.exe to get started
 
 Important Note:
 -For VibeVault to recognize songs on your pc the user must manually add them to the library 
