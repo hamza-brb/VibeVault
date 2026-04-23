@@ -174,6 +174,31 @@ class PlayerServiceTest {
     }
 
     @Test
+    void shouldCountActualListenedTimeWhenSeekingToEnd() throws InterruptedException {
+        PlayerService playerService = new PlayerService(databaseManager);
+        Song unplayableSong = new Song(
+                songs.get(0).getSongId(),
+                songs.get(0).getTitle(),
+                songs.get(0).getArtistId(),
+                songs.get(0).getDurationSeconds(),
+                "missing-file-for-test.mp3"
+        );
+
+        playerService.setActiveUserId(user.getUserId());
+        playerService.setQueue(List.of(unplayableSong));
+        playerService.play();
+
+        Thread.sleep(1200);
+        playerService.seekToSecond(179);
+        playerService.pause();
+
+        List<PlayHistory> history = playHistoryDAO.findRecentByUser(user.getUserId(), 10);
+        assertEquals(1, history.size());
+        assertTrue(history.get(0).getDurationListened() < 10,
+                "Seeking near the end should not count full-song duration as listened time");
+    }
+
+    @Test
     void shouldMoveAndRemoveQueueItemsWhenShuffleIsOff() {
         PlayerService playerService = new PlayerService(databaseManager);
         playerService.setQueue(songs);

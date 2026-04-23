@@ -55,6 +55,7 @@ public class PlayerService {
     private long playbackStartEpochMillis = -1;
     private int playbackStartSecond;
     private Integer activePlayHistoryId;
+    private int activePlayListenedSeconds;
 
     public PlayerService(DatabaseManager databaseManager) {
         this(databaseManager, new Random());
@@ -77,7 +78,7 @@ public class PlayerService {
         rebuildPlayOrder();
         orderPosition = queue.isEmpty() ? -1 : 0;
         currentSecond = 0;
-        activePlayHistoryId = null;
+        resetActivePlayTracking();
         setPlaying(false);
         propertyChangeSupport.firePropertyChange("currentSong", null, getCurrentSong().orElse(null));
     }
@@ -110,7 +111,7 @@ public class PlayerService {
         playOrder.clear();
         orderPosition = -1;
         currentSecond = 0;
-        activePlayHistoryId = null;
+        resetActivePlayTracking();
         setPlaying(false);
         propertyChangeSupport.firePropertyChange("currentSong", null, null);
     }
@@ -132,7 +133,7 @@ public class PlayerService {
         if (queue.isEmpty()) {
             orderPosition = -1;
             currentSecond = 0;
-            activePlayHistoryId = null;
+            resetActivePlayTracking();
             setPlaying(false);
             propertyChangeSupport.firePropertyChange("currentSong", null, null);
             return true;
@@ -144,7 +145,7 @@ public class PlayerService {
         if (currentQueueIndex == queueIndex) {
             orderPosition = Math.min(queueIndex, queue.size() - 1);
             currentSecond = 0;
-            activePlayHistoryId = null;
+            resetActivePlayTracking();
             return true;
         }
 
@@ -198,7 +199,7 @@ public class PlayerService {
         naturallyEnded = false;
         orderPosition = targetOrderPosition;
         currentSecond = 0;
-        activePlayHistoryId = null;
+        resetActivePlayTracking();
         setPlaying(true);
         markPlaybackSessionStart();
         startAudioPlaybackIfPossible();
@@ -249,7 +250,7 @@ public class PlayerService {
             finalizeCurrentSongSessionIfNeeded();
             commitCurrentSongPlayIfNeeded();
             currentSecond = 0;
-            activePlayHistoryId = null;
+            resetActivePlayTracking();
             if (playing) {
                 setPlaying(true);
                 markPlaybackSessionStart();
@@ -263,7 +264,7 @@ public class PlayerService {
         commitCurrentSongPlayIfNeeded();
         orderPosition = orderPosition < playOrder.size() - 1 ? orderPosition + 1 : 0;
         currentSecond = 0;
-        activePlayHistoryId = null;
+        resetActivePlayTracking();
         markPlaybackSessionStart();
         if (playing) {
             startAudioPlaybackIfPossible();
@@ -281,7 +282,7 @@ public class PlayerService {
             finalizeCurrentSongSessionIfNeeded();
             commitCurrentSongPlayIfNeeded();
             currentSecond = 0;
-            activePlayHistoryId = null;
+            resetActivePlayTracking();
             if (playing) {
                 markPlaybackSessionStart();
                 startAudioPlaybackIfPossible();
@@ -294,7 +295,7 @@ public class PlayerService {
         commitCurrentSongPlayIfNeeded();
         orderPosition = orderPosition > 0 ? orderPosition - 1 : playOrder.size() - 1;
         currentSecond = 0;
-        activePlayHistoryId = null;
+        resetActivePlayTracking();
         markPlaybackSessionStart();
         if (playing) {
             startAudioPlaybackIfPossible();
@@ -314,7 +315,7 @@ public class PlayerService {
         if (repeatMode == RepeatMode.ONE) {
             naturallyEnded = false;
             currentSecond = 0;
-            activePlayHistoryId = null;
+            resetActivePlayTracking();
             setPlaying(true);
             markPlaybackSessionStart();
             startAudioPlaybackIfPossible();
@@ -326,7 +327,7 @@ public class PlayerService {
             naturallyEnded = false;
             orderPosition++;
             currentSecond = 0;
-            activePlayHistoryId = null;
+            resetActivePlayTracking();
             setPlaying(true);
             markPlaybackSessionStart();
             startAudioPlaybackIfPossible();
@@ -338,7 +339,7 @@ public class PlayerService {
             naturallyEnded = false;
             orderPosition = 0;
             currentSecond = 0;
-            activePlayHistoryId = null;
+            resetActivePlayTracking();
             setPlaying(true);
             markPlaybackSessionStart();
             startAudioPlaybackIfPossible();
@@ -348,7 +349,7 @@ public class PlayerService {
 
         naturallyEnded = false;
         currentSecond = 0;
-        activePlayHistoryId = null;
+        resetActivePlayTracking();
         setPlaying(false);
         propertyChangeSupport.firePropertyChange("currentSong", null, getCurrentSong().orElse(null));
         return Optional.empty();
@@ -396,11 +397,15 @@ public class PlayerService {
         }
 
         naturallyEnded = false;
+        if (playing) {
+            finalizeCurrentSongSessionIfNeeded();
+        }
         currentSecond = targetSecond;
 
         if (!playing) {
             return;
         }
+        markPlaybackSessionStart();
 
         MediaPlayer mediaPlayer = activeMediaPlayer;
         if (mediaPlayer != null) {
@@ -416,7 +421,6 @@ public class PlayerService {
             return;
         }
 
-        markPlaybackSessionStart();
         startAudioPlaybackIfPossible();
     }
 
@@ -449,8 +453,9 @@ public class PlayerService {
 
     public void setActiveUserId(Integer userId) {
         if (this.activeUserId != null && userId == null) {
+            finalizeCurrentSongSessionIfNeeded();
             commitCurrentSongPlayIfNeeded();
-            activePlayHistoryId = null;
+            resetActivePlayTracking();
         }
         this.activeUserId = userId;
     }
@@ -686,8 +691,14 @@ public class PlayerService {
         }
 
         int elapsedSeconds = (int) Math.max(0, (System.currentTimeMillis() - playbackStartEpochMillis) / 1000L);
-        int totalListened = Math.max(currentSecond, playbackStartSecond + elapsedSeconds);
-        currentSecond = totalListened;
+        if (elapsedSeconds > 0 && activePlayHistoryId != null) {
+            Song song = queue.get(playOrder.get(orderPosition));
+            Integer duration = song.getDurationSeconds();
+            int next = activePlayListenedSeconds + elapsedSeconds;
+            activePlayListenedSeconds = duration == null ? next : Math.min(duration, next);
+        }
+        int positionFromClock = playbackStartSecond + elapsedSeconds;
+        currentSecond = Math.max(currentSecond, positionFromClock);
         resetPlaybackSessionClock();
     }
 
@@ -695,7 +706,7 @@ public class PlayerService {
         if (activePlayHistoryId == null) {
             return;
         }
-        playHistoryDAO.updateDurationListened(activePlayHistoryId, currentSecond);
+        playHistoryDAO.updateDurationListened(activePlayHistoryId, activePlayListenedSeconds);
     }
 
     private void registerPlayStartIfNeeded() {
@@ -705,6 +716,12 @@ public class PlayerService {
         Song currentSong = queue.get(playOrder.get(orderPosition));
         PlayHistory play = playHistoryDAO.logPlay(activeUserId, currentSong.getSongId(), 0);
         activePlayHistoryId = play.getPlayId();
+        activePlayListenedSeconds = 0;
+    }
+
+    private void resetActivePlayTracking() {
+        activePlayHistoryId = null;
+        activePlayListenedSeconds = 0;
     }
 
     private void resetPlaybackSessionClock() {
